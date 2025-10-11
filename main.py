@@ -10,7 +10,8 @@ from pyrogram.handlers import MessageHandler
 from pyrogram.enums import ChatType
 from pyrogram.errors import (
     FloodWait, SessionPasswordNeeded, PhoneCodeInvalid,
-    PasswordHashInvalid, PhoneNumberInvalid, PhoneCodeExpired, UserDeactivated, AuthKeyUnregistered
+    PasswordHashInvalid, PhoneNumberInvalid, PhoneCodeExpired, UserDeactivated, AuthKeyUnregistered,
+    ReactionInvalid
 )
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -230,12 +231,25 @@ async def incoming_message_manager(client, message):
     if not message.from_user: return
     user_id = client.me.id
     
+    # --- Step 1: Handle Auto Reaction ---
     reaction_map = AUTO_REACTION_TARGETS.get(user_id, {})
     target_key = (message.from_user.id, message.chat.id)
     if target_key in reaction_map:
-        try: await client.send_reaction(message.chat.id, message.id, reaction_map[target_key])
-        except Exception as e: logging.warning(f"Could not send reaction for user {user_id}: {e}")
+        emoji = reaction_map[target_key]
+        try:
+            await client.send_reaction(message.chat.id, message.id, emoji)
+        except ReactionInvalid:
+            logging.warning(f"Invalid reaction emoji '{emoji}' for user {user_id}.")
+            try:
+                await client.send_message(user_id, f"⚠️ **خطا:** ایموجی `{emoji}` برای واکنش معتبر نیست و از لیست حذف شد.")
+                if AUTO_REACTION_TARGETS.get(user_id, {}).pop(target_key, None):
+                    logging.info(f"Removed invalid reaction setting for {target_key}")
+            except Exception as e2:
+                logging.warning(f"Could not send error message to user {user_id}: {e2}")
+        except Exception as e:
+            logging.warning(f"Could not send reaction for user {user_id}: {e}")
 
+    # --- Step 2: Handle Mute ---
     muted_list = MUTED_USERS.get(user_id, set())
     if (message.from_user.id, message.chat.id) in muted_list:
         try: 
