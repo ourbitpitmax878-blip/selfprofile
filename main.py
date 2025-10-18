@@ -32,7 +32,7 @@ API_ID = 28190856
 API_HASH = "6b9b5309c2a211b526c6ddad6eabb521"
 # --- تنظیمات ربات ادمین ---
 BOT_TOKEN = "8440383140:AAFoPNkzVlSXoNDs2v1dQF82RTwaQ9oDDzk"
-ADMIN_ID = 7423552124,6198128738
+ADMIN_ID = 7423552124
 
 
 # --- تنظیمات پایگاه داده ---
