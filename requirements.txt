@@ -3,3 +3,4 @@ TgCrypto
 flask
 aiohttp
 motor
+pymongo
