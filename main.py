@@ -143,7 +143,7 @@ ACTIVE_BOTS = {}
 
 # --- توابع کمکی پایگاه داده ---
 async def update_db_settings(user_id, settings_update):
-    if users_collection:
+    if users_collection is not None:
         try:
             await users_collection.update_one({'_id': user_id}, {'$set': settings_update}, upsert=False)
         except Exception as e:
@@ -181,7 +181,7 @@ async def update_profile_clock(client: Client, user_id: int):
             await asyncio.sleep(sleep_duration)
         except (UserDeactivated, AuthKeyUnregistered) as e:
             logging.error(f"Session for user_id {user_id} is invalid. Stopping bot. Reason: {e}")
-            if users_collection:
+            if users_collection is not None:
                 await users_collection.delete_one({'_id': user_id})
                 logging.info(f"Removed invalid session for user {user_id} from database.")
             break
@@ -490,7 +490,7 @@ is_enemy = filters.create(is_enemy_filter)
 async def start_bot_instance(user_id: int, session_string: str, user_settings: dict):
     try:
         phone_number = user_settings.get("phone_number", f"user_{user_id}")
-        client = Client(f"bot_{phone_number}", api_id=API_ID, api_hash=API_HASH, session_string=session_string)
+        client = Client(f"bot_{phone_number}", api_id=API_ID, api_hash=API_HASH, session_string=session_string, in_memory=True)
         await client.start()
         
         # Load settings from DB into memory
@@ -536,11 +536,16 @@ async def start_bot_instance(user_id: int, session_string: str, user_settings: d
             if task := ACTIVE_BOTS.pop(user_id, None): task.cancel()
         ACTIVE_BOTS[user_id] = asyncio.create_task(update_profile_clock(client, user_id))
         logging.info(f"Successfully started bot instance from DB for user_id {user_id}.")
-    except Exception as e:
-        logging.error(f"FAILED to start bot instance for user {user_id}: {e}", exc_info=True)
-        if isinstance(e, (AuthKeyUnregistered, UserDeactivated)) and users_collection:
+    except (AuthKeyUnregistered, UserDeactivated) as e:
+        logging.error(f"FAILED to start bot instance for user {user_id} due to invalid session: {e}")
+        if users_collection is not None:
             await users_collection.delete_one({'_id': user_id})
             logging.info(f"Removed invalid session for user {user_id} from database.")
+            if admin_bot and ADMIN_ID:
+                await admin_bot.send_message(ADMIN_ID, f"⚠️ جلسه برای کاربر با آیدی `{user_id}` منقضی شده بود و به طور خودکار از پایگاه داده حذف شد. کاربر باید مجدداً وارد شود.")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while starting bot for user {user_id}: {e}", exc_info=True)
+
 
 # --- Admin Bot Handlers ---
 async def get_users_panel():
@@ -639,7 +644,7 @@ def login():
     action = request.form.get('action')
     phone = session.get('phone_number')
     try:
-        if not MONGO_URI and action in ['code', 'password']:
+        if users_collection is None and action in ['code', 'password']:
             raise Exception("پایگاه داده متصل نیست. لطفا متغیر MONGO_URI را تنظیم کنید.")
 
         if action == 'phone':
