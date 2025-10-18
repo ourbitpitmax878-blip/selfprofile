@@ -160,6 +160,13 @@ async def update_profile_clock(client: Client, user_id: int):
     
     while user_id in ACTIVE_BOTS:
         try:
+            if not client.is_connected:
+                logging.warning(f"Client for user {user_id} disconnected. Attempting to reconnect...")
+                await client.start()
+                if not client.is_connected:
+                    logging.error(f"Failed to reconnect for user {user_id}. Stopping loop.")
+                    break
+
             if CLOCK_STATUS.get(user_id, True):
                 current_font_style = USER_FONT_CHOICES.get(user_id, 'stylized')
                 me = await client.get_me()
