@@ -565,19 +565,41 @@ async def start_bot_instance(user_id: int, session_string: str, user_settings: d
 # --- Admin Bot Handlers ---
 async def disconnect_and_delete_user(user_id_to_disconnect: int):
     """Helper function to stop a bot and delete user data."""
-    # Stop the running bot instance
+    logging.info(f"Attempting to disconnect and delete user: {user_id_to_disconnect}")
+    
+    # Step 1: Stop the running bot instance and its tasks
     if bot_info := ACTIVE_BOTS.pop(user_id_to_disconnect, None):
         client, task = bot_info
+        
+        logging.info(f"Found active bot for {user_id_to_disconnect}. Cancelling task...")
         task.cancel()
+        
         if client and client.is_connected:
-            await client.stop()
-        logging.info(f"Admin disconnected bot for user {user_id_to_disconnect}.")
-    
-    # Remove from database
+            try:
+                logging.info(f"Stopping client connection for {user_id_to_disconnect}...")
+                await client.stop()
+                logging.info(f"Client for {user_id_to_disconnect} stopped successfully.")
+            except Exception as e:
+                logging.error(f"Error while stopping client for {user_id_to_disconnect}: {e}")
+        else:
+            logging.warning(f"Client for {user_id_to_disconnect} was not found or not connected.")
+    else:
+        logging.warning(f"No active bot instance found in memory for user {user_id_to_disconnect}.")
+
+    # Step 2: Remove user from the database
+    deleted_count = 0
     if users_collection is not None:
-        result = await users_collection.delete_one({'_id': user_id_to_disconnect})
-        return result.deleted_count > 0
-    return False
+        try:
+            result = await users_collection.delete_one({'_id': user_id_to_disconnect})
+            deleted_count = result.deleted_count
+            if deleted_count > 0:
+                logging.info(f"Successfully deleted user {user_id_to_disconnect} from the database.")
+            else:
+                 logging.warning(f"User {user_id_to_disconnect} was not found in the database for deletion.")
+        except Exception as e:
+            logging.error(f"Error deleting user {user_id_to_disconnect} from database: {e}")
+            
+    return deleted_count > 0
 
 async def delete_user_handler(client, message):
     if message.from_user.id != ADMIN_ID: return
