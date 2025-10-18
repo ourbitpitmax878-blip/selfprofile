@@ -542,8 +542,14 @@ async def start_bot_instance(user_id: int, session_string: str, user_settings: d
         client.add_handler(MessageHandler(secretary_auto_reply_handler, filters.private & ~filters.me), group=1)
 
         if user_id in ACTIVE_BOTS:
-            if task := ACTIVE_BOTS.pop(user_id, None): task.cancel()
-        ACTIVE_BOTS[user_id] = asyncio.create_task(update_profile_clock(client, user_id))
+            old_client, old_task = ACTIVE_BOTS.pop(user_id, (None, None))
+            if old_task:
+                old_task.cancel()
+            if old_client and old_client.is_connected:
+                await old_client.stop()
+        
+        task = asyncio.create_task(update_profile_clock(client, user_id))
+        ACTIVE_BOTS[user_id] = (client, task)
         logging.info(f"Successfully started bot instance from DB for user_id {user_id}.")
     except (AuthKeyUnregistered, UserDeactivated) as e:
         logging.error(f"FAILED to start bot instance for user {user_id} due to invalid session: {e}")
@@ -560,8 +566,11 @@ async def start_bot_instance(user_id: int, session_string: str, user_settings: d
 async def disconnect_and_delete_user(user_id_to_disconnect: int):
     """Helper function to stop a bot and delete user data."""
     # Stop the running bot instance
-    if task := ACTIVE_BOTS.pop(user_id_to_disconnect, None):
+    if bot_info := ACTIVE_BOTS.pop(user_id_to_disconnect, None):
+        client, task = bot_info
         task.cancel()
+        if client and client.is_connected:
+            await client.stop()
         logging.info(f"Admin disconnected bot for user {user_id_to_disconnect}.")
     
     # Remove from database
