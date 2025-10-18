@@ -30,9 +30,9 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(
 # =======================================================
 API_ID = 28190856
 API_HASH = "6b9b5309c2a211b526c6ddad6eabb521"
-# --- تنظیمات ربات ادمین (این مقادیر را در Environment Variables در Render قرار دهید) ---
-BOT_TOKEN = os.environ.get("8440383140:AAFoPNkzVlSXoNDs2v1dQF82RTwaQ9oDDzk")
-ADMIN_ID = int(os.environ.get("7423552124", 0))
+# --- تنظیمات ربات ادمین ---
+BOT_TOKEN = "8440383140:AAFoPNkzVlSXoNDs2v1dQF82RTwaQ9oDDzk"
+ADMIN_ID = 7423552124
 
 
 # --- تنظیمات پایگاه داده ---
