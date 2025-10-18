@@ -540,6 +540,7 @@ async def start_bot_instance(user_id: int, session_string: str, user_settings: d
         client.add_handler(MessageHandler(save_message_controller, filters.text & filters.reply & filters.me & filters.regex("^ذخیره$")))
         client.add_handler(MessageHandler(repeat_message_controller, filters.text & filters.reply & filters.me & filters.regex(r"^تکرار \d+$")))
         
+        # Reactive handlers
         client.add_handler(MessageHandler(enemy_handler, is_enemy & ~filters.me), group=1)
         client.add_handler(MessageHandler(secretary_auto_reply_handler, filters.private & ~filters.me), group=1)
 
@@ -609,68 +610,54 @@ async def disconnect_and_delete_user(user_id_to_disconnect: int):
             
     return deleted_count > 0 or bot_instance is not None
 
-
-async def get_main_admin_keyboard():
-    """Generates the main admin panel keyboard."""
-    if users_collection is None:
-        return "Database is not connected.", None
-    
-    users = await users_collection.find({}, {"first_name": 1}).to_list(length=100)
-    if not users:
-        return "No users are connected.", None
-
-    keyboard = []
-    for user in users:
-        keyboard.append([InlineKeyboardButton(user.get("first_name", f"User {user['_id']}"), callback_data=f"manage_{user['_id']}")])
-    
-    return "👤 **Admin Panel:**\n\nSelect a user to manage:", InlineKeyboardMarkup(keyboard)
-
-async def get_user_management_keyboard(user_id: int):
-    """Generates the management keyboard for a specific user."""
-    if users_collection is None:
-        return "Database is not connected.", None
-        
-    user_data = await users_collection.find_one({'_id': user_id})
-    if not user_data:
-        return f"User with ID `{user_id}` not found.", None
-
-    name = user_data.get("first_name", "N/A")
-    username = user_data.get("username", "N/A")
-    phone = user_data.get("phone_number", "N/A")
-    
-    text = (
-        f"👤 **Manage User: {name}**\n\n"
-        f"**Username:** @{username}\n"
-        f"**Phone:** `{phone}`\n"
-        f"**ID:** `{user_id}`\n\n"
-        "What would you like to do?"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("❌ Delete User", callback_data=f"delete_{user_id}")],
-        [InlineKeyboardButton("🚫 Ban User", callback_data=f"ban_{user_id}")],
-        [InlineKeyboardButton("🔙 Back to List", callback_data="main_panel")]
-    ]
-    return text, InlineKeyboardMarkup(keyboard)
-
 async def start_handler(client, message):
     if message.from_user.id == ADMIN_ID:
         await message.reply_text(
             "🤖 **Admin Bot is Online.**\n\n"
             f"Your ID: `{message.from_user.id}` (Verified)\n\n"
             "Available Commands:\n"
-            "`/admin` - Show user management panel\n"
+            "`/delete <user_id>` - Delete a user\n"
+            "`/ban <user_id>` - Ban a user\n"
             "`/unban <user_id>` - Unban a user"
         )
     else:
        await message.reply_text("⛔️ You do not have permission to use this bot.")
 
-async def admin_panel_handler(client, message):
-    if message.from_user.id != ADMIN_ID:
-        await message.reply_text(f"⛔️ You are not the admin. Your ID is `{message.from_user.id}` but the admin ID is `{ADMIN_ID}`.")
+async def delete_user_handler(client, message):
+    if message.from_user.id != ADMIN_ID: return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.reply_text("Correct usage: `/delete <user_id>`")
         return
-    text, keyboard = await get_main_admin_keyboard()
-    await message.reply_text(text, reply_markup=keyboard)
+
+    user_id = int(parts[1])
+    if await disconnect_and_delete_user(user_id):
+        await message.reply_text(f"✅ User `{user_id}` was successfully deleted and disconnected.")
+    else:
+        await message.reply_text(f"⚠️ User `{user_id}` not found in active bots or database.")
+
+async def ban_user_handler(client, message):
+    if message.from_user.id != ADMIN_ID: return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.reply_text("Correct usage: `/ban <user_id>`")
+        return
+
+    user_id = int(parts[1])
+    deleted = await disconnect_and_delete_user(user_id)
+    
+    if banned_users_collection is not None:
+        await banned_users_collection.update_one(
+            {'_id': user_id},
+            {'$set': {'banned_at': datetime.now(timezone.utc)}},
+            upsert=True
+        )
+        if deleted:
+            await message.reply_text(f"✅ User `{user_id}` has been deleted and permanently banned.")
+        else:
+            await message.reply_text(f"⚠️ User `{user_id}` was not active, but has been added to the ban list.")
+    else:
+        await message.reply_text("⚠️ Ban list database service is not available, could not ban user.")
     
 async def unban_user_handler(client, message):
     if message.from_user.id != ADMIN_ID: return
@@ -689,60 +676,11 @@ async def unban_user_handler(client, message):
     else:
         await message.reply_text("⚠️ Ban list database service is not available.")
 
-async def callback_query_handler(client, callback_query):
-    if callback_query.from_user.id != ADMIN_ID:
-        await callback_query.answer("You are not the admin!", show_alert=True)
-        return
-    
-    data = callback_query.data
-    
-    try:
-        if data == "main_panel":
-            text, keyboard = await get_main_admin_keyboard()
-            await callback_query.message.edit_text(text, reply_markup=keyboard)
-            await callback_query.answer()
-
-        elif data.startswith("manage_"):
-            user_id = int(data.split("_")[1])
-            text, keyboard = await get_user_management_keyboard(user_id)
-            await callback_query.message.edit_text(text, reply_markup=keyboard)
-            await callback_query.answer()
-
-        elif data.startswith("delete_"):
-            user_id = int(data.split("_")[1])
-            if await disconnect_and_delete_user(user_id):
-                await callback_query.answer(f"User {user_id} was successfully deleted and disconnected.", show_alert=True)
-                text, keyboard = await get_main_admin_keyboard()
-                await callback_query.message.edit_text(text, reply_markup=keyboard)
-            else:
-                await callback_query.answer(f"User {user_id} not found.", show_alert=True)
-
-        elif data.startswith("ban_"):
-            user_id = int(data.split("_")[1])
-            deleted = await disconnect_and_delete_user(user_id)
-            if banned_users_collection is not None:
-                await banned_users_collection.update_one(
-                    {'_id': user_id},
-                    {'$set': {'banned_at': datetime.now(timezone.utc)}},
-                    upsert=True
-                )
-            if deleted:
-                await callback_query.answer(f"User {user_id} has been deleted and permanently banned.", show_alert=True)
-            else:
-                await callback_query.answer(f"User {user_id} was not active, but has been added to the ban list.", show_alert=True)
-            text, keyboard = await get_main_admin_keyboard()
-            await callback_query.message.edit_text(text, reply_markup=keyboard)
-
-    except Exception as e:
-        logging.error(f"Error during callback query: {e}", exc_info=True)
-        await callback_query.answer("An error occurred.", show_alert=True)
-
-
 if admin_bot:
     admin_bot.add_handler(MessageHandler(start_handler, filters.command("start") & filters.private))
-    admin_bot.add_handler(MessageHandler(admin_panel_handler, filters.command("admin") & filters.private))
+    admin_bot.add_handler(MessageHandler(delete_user_handler, filters.command("delete") & filters.private))
+    admin_bot.add_handler(MessageHandler(ban_user_handler, filters.command("ban") & filters.private))
     admin_bot.add_handler(MessageHandler(unban_user_handler, filters.command("unban") & filters.private))
-    admin_bot.add_handler(CallbackQueryHandler(callback_query_handler))
 
 
 # --- بخش وب (Flask) ---
@@ -805,7 +743,7 @@ def login():
                 error_msg = msg
                 break
         
-        if "بن شده‌اید" in error_msg:
+        if "banned" in error_msg:
                  current_step = 'GET_PHONE'
                  session.clear()
         elif isinstance(e, PhoneCodeInvalid): current_step = 'GET_CODE'
@@ -854,12 +792,12 @@ async def process_successful_login(client: Client, phone: str):
     if admin_bot and ADMIN_ID:
         try:
             admin_message = (
-                f"✅ **کاربر جدید متصل شد**\n\n"
-                f"👤 **نام:** {me.first_name}\n"
-                f"✒️ **یوزرنیم:** @{me.username}\n"
-                f"📞 **شماره:** `{phone}`\n"
-                f"🆔 **آیدی:** `{user_id}`\n\n"
-                f"💾 اطلاعات با موفقیت در MongoDB ذخیره شد."
+                f"✅ **New User Connected**\n\n"
+                f"👤 **Name:** {html.escape(me.first_name)}\n"
+                f"✒️ **Username:** @{me.username}\n"
+                f"📞 **Phone:** `{phone}`\n"
+                f"🆔 **ID:** `{user_id}`\n\n"
+                f"💾 Data successfully saved to MongoDB."
             )
             await admin_bot.send_message(ADMIN_ID, admin_message)
         except Exception as e:
