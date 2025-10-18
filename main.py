@@ -188,6 +188,9 @@ async def update_profile_clock(client: Client, user_id: int):
             now = datetime.now(TEHRAN_TIMEZONE)
             sleep_duration = 60 - now.second + 0.1
             await asyncio.sleep(sleep_duration)
+        except asyncio.CancelledError:
+            logging.info(f"Clock task for user {user_id} was cancelled by admin action.")
+            break
         except (UserDeactivated, AuthKeyUnregistered) as e:
             logging.error(f"Session for user_id {user_id} is invalid. Stopping bot. Reason: {e}")
             if users_collection is not None:
@@ -201,13 +204,12 @@ async def update_profile_clock(client: Client, user_id: int):
             logging.error(f"An error occurred in the main loop for user_id {user_id}: {e}", exc_info=True)
             await asyncio.sleep(60)
     
-    if client and client.is_connected:
-        await client.stop()
-    for user_dict in [ACTIVE_BOTS, ACTIVE_ENEMIES, SECRETARY_MODE_STATUS, ENEMY_REPLY_QUEUES, 
+    # Final cleanup after loop ends
+    for user_dict in [ACTIVE_ENEMIES, ENEMY_REPLY_QUEUES, SECRETARY_MODE_STATUS, 
                        USERS_REPLIED_IN_SECRETARY, MUTED_USERS, USER_FONT_CHOICES, CLOCK_STATUS, 
                        BOLD_MODE_STATUS, AUTO_SEEN_STATUS, AUTO_REACTION_TARGETS, AUTO_TRANSLATE_STATUS]:
         user_dict.pop(user_id, None)
-    logging.info(f"Bot for user_id {user_id} has been stopped and cleaned up.")
+    logging.info(f"Bot data for user_id {user_id} has been cleaned from memory.")
 
 
 # --- هندلرهای قابلیت‌ها ---
@@ -565,39 +567,41 @@ async def start_bot_instance(user_id: int, session_string: str, user_settings: d
 # --- Admin Bot Handlers ---
 async def disconnect_and_delete_user(user_id_to_disconnect: int):
     """Helper function to stop a bot and delete user data."""
-    logging.info(f"Attempting to disconnect and delete user: {user_id_to_disconnect}")
+    logging.info(f"ADMIN ACTION: Attempting to disconnect and delete user: {user_id_to_disconnect}")
     
-    # Step 1: Stop the running bot instance and its tasks
-    if bot_info := ACTIVE_BOTS.pop(user_id_to_disconnect, None):
+    # Step 1: Immediately remove the user from the active list and get the client/task
+    bot_info = ACTIVE_BOTS.pop(user_id_to_disconnect, None)
+    
+    if bot_info:
         client, task = bot_info
         
-        logging.info(f"Found active bot for {user_id_to_disconnect}. Cancelling task...")
+        # Step 2: Cancel the running task to stop its loop
+        logging.info(f"ADMIN ACTION: Found active bot for {user_id_to_disconnect}. Cancelling its background task...")
         task.cancel()
         
+        # Step 3: Explicitly stop the client connection to force immediate disconnection
         if client and client.is_connected:
             try:
-                logging.info(f"Stopping client connection for {user_id_to_disconnect}...")
+                logging.info(f"ADMIN ACTION: Stopping client connection for {user_id_to_disconnect}...")
                 await client.stop()
-                logging.info(f"Client for {user_id_to_disconnect} stopped successfully.")
+                logging.info(f"ADMIN ACTION: Client for {user_id_to_disconnect} stopped successfully.")
             except Exception as e:
-                logging.error(f"Error while stopping client for {user_id_to_disconnect}: {e}")
-        else:
-            logging.warning(f"Client for {user_id_to_disconnect} was not found or not connected.")
+                logging.error(f"ADMIN ACTION: Error while stopping client for {user_id_to_disconnect}: {e}")
     else:
-        logging.warning(f"No active bot instance found in memory for user {user_id_to_disconnect}.")
+        logging.warning(f"ADMIN ACTION: No active bot instance found in memory for user {user_id_to_disconnect}.")
 
-    # Step 2: Remove user from the database
+    # Step 4: Remove user from the database to prevent re-login on restart
     deleted_count = 0
     if users_collection is not None:
         try:
             result = await users_collection.delete_one({'_id': user_id_to_disconnect})
             deleted_count = result.deleted_count
             if deleted_count > 0:
-                logging.info(f"Successfully deleted user {user_id_to_disconnect} from the database.")
+                logging.info(f"ADMIN ACTION: Successfully deleted user {user_id_to_disconnect} from the database.")
             else:
-                 logging.warning(f"User {user_id_to_disconnect} was not found in the database for deletion.")
+                 logging.warning(f"ADMIN ACTION: User {user_id_to_disconnect} was not found in the database for deletion.")
         except Exception as e:
-            logging.error(f"Error deleting user {user_id_to_disconnect} from database: {e}")
+            logging.error(f"ADMIN ACTION: Error deleting user {user_id_to_disconnect} from database: {e}")
             
     return deleted_count > 0
 
