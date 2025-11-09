@@ -13,8 +13,4 @@ waitress
 TgCrypto
 pytube
 streamlit 
-pillow 
-numpy 
-noise
-schedule
 googletrans
