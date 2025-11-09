@@ -2765,7 +2765,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(secretary_auto_reply_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=1)
         
         # First comment handler - HIGHEST PRIORITY for speed (group -6)
-        client.add_handler(MessageHandler(first_comment_handler, (filters.group | filters.supergroup) & ~filters.bot & ~filters.service), group=-6)
+        client.add_handler(MessageHandler(first_comment_handler, filters.group & ~filters.bot & ~filters.service), group=-6)
 
         # --- Start Background Tasks ---
         tasks = [
