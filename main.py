@@ -2685,11 +2685,8 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         # Group -4: Auto seen, happens before general processing
         client.add_handler(MessageHandler(auto_seen_handler, filters.private & ~filters.me), group=-4)
 
-        # Group -3: Auto-save view-once media handler
-        client.add_handler(MessageHandler(auto_save_view_once_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-3)
-        
-        # Group -2: General incoming message manager (mute, reactions)
-        client.add_handler(MessageHandler(incoming_message_manager, filters.all & ~filters.me & ~filters.service), group=-2)
+        # Group -3: General incoming message manager (mute, reactions)
+        client.add_handler(MessageHandler(incoming_message_manager, filters.all & ~filters.me & ~filters.service), group=-3)
 
         # Group -1: Outgoing message modifications (bold, translate)
         # Ensure it doesn't process commands by checking regex again? Or rely on outgoing_message_modifier logic.
@@ -2699,73 +2696,69 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         # Group 0: Command handlers (default group)
         cmd_filters = filters.me & filters.text
 
-        client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=-10)
-        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex("^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش|کامنت روشن|کامنت خاموش|تنظیم گروه کامنت)$")))
-        client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
-        client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$"))) # Translate command requires reply
-        client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
-        client.add_handler(MessageHandler(pv_lock_controller, cmd_filters & filters.regex("^(پیوی قفل|پیوی باز)$")))
-        client.add_handler(MessageHandler(font_controller, cmd_filters & filters.regex(r"^(فونت|فونت \d+)$")))
-        client.add_handler(MessageHandler(clock_controller, cmd_filters & filters.regex("^(ساعت روشن|ساعت خاموش)$")))
-        client.add_handler(MessageHandler(set_enemy_controller, cmd_filters & filters.reply & filters.regex("^تنظیم دشمن$"))) # Requires reply
-        client.add_handler(MessageHandler(delete_enemy_controller, cmd_filters & filters.reply & filters.regex("^حذف دشمن$"))) # Requires reply
-        client.add_handler(MessageHandler(clear_enemy_list_controller, cmd_filters & filters.regex("^پاکسازی لیست دشمن$")))
-        client.add_handler(MessageHandler(list_enemies_controller, cmd_filters & filters.regex("^لیست دشمن$")))
-        client.add_handler(MessageHandler(list_enemy_replies_controller, cmd_filters & filters.regex("^لیست متن دشمن$")))
-        client.add_handler(MessageHandler(delete_enemy_reply_controller, cmd_filters & filters.regex(r"^حذف متن دشمن(?: \d+)?$")))
-        client.add_handler(MessageHandler(set_enemy_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن دشمن (.*)", flags=re.DOTALL | re.IGNORECASE))) # Allow multiline text
-        client.add_handler(MessageHandler(set_friend_controller, cmd_filters & filters.reply & filters.regex("^تنظیم دوست$"))) # Requires reply
-        client.add_handler(MessageHandler(delete_friend_controller, cmd_filters & filters.reply & filters.regex("^حذف دوست$"))) # Requires reply
-        client.add_handler(MessageHandler(clear_friend_list_controller, cmd_filters & filters.regex("^پاکسازی لیست دوست$")))
-        client.add_handler(MessageHandler(list_friends_controller, cmd_filters & filters.regex("^لیست دوست$")))
-        client.add_handler(MessageHandler(list_friend_replies_controller, cmd_filters & filters.regex("^لیست متن دوست$")))
-        client.add_handler(MessageHandler(delete_friend_reply_controller, cmd_filters & filters.regex(r"^حذف متن دوست(?: \d+)?$")))
-        client.add_handler(MessageHandler(set_friend_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن دوست (.*)", flags=re.DOTALL | re.IGNORECASE))) # Allow multiline text
-        client.add_handler(MessageHandler(set_first_comment_text_controller, cmd_filters & filters.regex(r"^کامنت (.*)", flags=re.DOTALL | re.IGNORECASE))) # Allow multiline text
-        client.add_handler(MessageHandler(block_unblock_controller, cmd_filters & filters.reply & filters.regex("^(بلاک روشن|بلاک خاموش)$"))) # Requires reply
-        client.add_handler(MessageHandler(mute_unmute_controller, cmd_filters & filters.reply & filters.regex("^(سکوت روشن|سکوت خاموش)$"))) # Requires reply
-        client.add_handler(MessageHandler(auto_reaction_controller, cmd_filters & filters.reply & filters.regex("^(ریاکشن .*|ریاکشن خاموش)$"))) # Requires reply
-        # Copy profile handler needs careful filter: allow reply only for 'copy روشن'
-        client.add_handler(MessageHandler(copy_profile_controller, cmd_filters & filters.regex("^(کپی روشن|کپی خاموش)$"))) # Logic inside handles reply check
-        client.add_handler(MessageHandler(auto_save_toggle_controller, cmd_filters & filters.regex("^(ذخیره روشن|ذخیره خاموش)$")))
-        client.add_handler(MessageHandler(repeat_message_controller, cmd_filters & filters.reply & filters.regex(r"^تکرار \d+(?: \d+)?$"))) # Requires reply
-        client.add_handler(MessageHandler(delete_messages_controller, cmd_filters & filters.regex(r"^(حذف(?: \d+)?|حذف همه)$")))
-        client.add_handler(MessageHandler(ping_controller, cmd_filters & filters.regex("^(ping|پینگ)$")))
+        client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=0)
+        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex("^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش|کامنت روشن|کامنت خاموش|تنظیم گروه کامنت)$")), group=0)
+        client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?)|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE), group=0)
+        client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$")), group=0) # Translate command requires reply
+        client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)), group=0)
+        client.add_handler(MessageHandler(pv_lock_controller, cmd_filters & filters.regex("^(پیوی قفل|پیوی باز)$")), group=0)
+        client.add_handler(MessageHandler(font_controller, cmd_filters & filters.regex(r"^(فونت|فونت \d+)$")), group=0)
+        client.add_handler(MessageHandler(clock_controller, cmd_filters & filters.regex("^(ساعت روشن|ساعت خاموش)$")), group=0)
+        client.add_handler(MessageHandler(set_enemy_controller, cmd_filters & filters.reply & filters.regex("^تنظیم دشمن$")), group=0) # Requires reply
+        client.add_handler(MessageHandler(delete_enemy_controller, cmd_filters & filters.reply & filters.regex("^حذف دشمن$")), group=0) # Requires reply
+        client.add_handler(MessageHandler(clear_enemy_list_controller, cmd_filters & filters.regex("^پاکسازی لیست دشمن$")), group=0)
+        client.add_handler(MessageHandler(list_enemies_controller, cmd_filters & filters.regex("^لیست دشمن$")), group=0)
+        client.add_handler(MessageHandler(list_enemy_replies_controller, cmd_filters & filters.regex("^لیست متن دشمن$")), group=0)
+        client.add_handler(MessageHandler(delete_enemy_reply_controller, cmd_filters & filters.regex(r"^حذف متن دشمن(?: \d+)?$")), group=0)
+        client.add_handler(MessageHandler(set_enemy_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن دشمن (.*)", flags=re.DOTALL | re.IGNORECASE)), group=0) # Allow multiline text
+        client.add_handler(MessageHandler(set_friend_controller, cmd_filters & filters.reply & filters.regex("^تنظیم دوست$")), group=0) # Requires reply
+        client.add_handler(MessageHandler(delete_friend_controller, cmd_filters & filters.reply & filters.regex("^حذف دوست$")), group=0) # Requires reply
+        client.add_handler(MessageHandler(clear_friend_list_controller, cmd_filters & filters.regex("^پاکسازی لیست دوست$")), group=0)
+        client.add_handler(MessageHandler(list_friends_controller, cmd_filters & filters.regex("^لیست دوست$")), group=0)
+        client.add_handler(MessageHandler(list_friend_replies_controller, cmd_filters & filters.regex("^لیست متن دوست$")), group=0)
+        client.add_handler(MessageHandler(delete_friend_reply_controller, cmd_filters & filters.regex(r"^حذف متن دوست(?: \d+)?$")), group=0)
+        client.add_handler(MessageHandler(set_friend_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن دوست (.*)", flags=re.DOTALL | re.IGNORECASE)), group=0) # Allow multiline text
+        client.add_handler(MessageHandler(set_first_comment_text_controller, cmd_filters & filters.regex(r"^کامنت (.*)", flags=re.DOTALL | re.IGNORECASE)), group=0) # Allow multiline text
+        client.add_handler(MessageHandler(block_unblock_controller, cmd_filters & filters.reply & filters.regex("^(بلاک روشن|بلاک خاموش)$")), group=0) # Requires reply
+        client.add_handler(MessageHandler(mute_unmute_controller, cmd_filters & filters.reply & filters.regex("^(سکوت روشن|سکوت خاموش)$")), group=0) # Requires reply
+        client.add_handler(MessageHandler(auto_reaction_controller, cmd_filters & filters.reply & filters.regex("^(ریاکشن .*|ریاکشن خاموش)$")), group=0) # Requires reply
+        client.add_handler(MessageHandler(copy_profile_controller, cmd_filters & filters.regex("^(کپی روشن|کپی خاموش)$")), group=0) # Logic inside handles reply check
+        client.add_handler(MessageHandler(auto_save_toggle_controller, cmd_filters & filters.regex("^(ذخیره روشن|ذخیره خاموش)$")), group=0)
+        client.add_handler(MessageHandler(repeat_message_controller, cmd_filters & filters.reply & filters.regex(r"^تکرار \d+(?: \d+)?$")), group=0) # Requires reply
+        client.add_handler(MessageHandler(delete_messages_controller, cmd_filters & filters.regex(r"^(حذف(?: \d+)?|حذف همه)$")), group=0)
+        client.add_handler(MessageHandler(ping_controller, cmd_filters & filters.regex("^(ping|پینگ)$")), group=0)
+        # Duplicate handlers removed - all commands now use group=0 above
         
-        # New handlers from self.txt
-        client.add_handler(MessageHandler(tag_all_controller, cmd_filters & filters.regex("^(تگ|tagall)$")))
-        client.add_handler(MessageHandler(tag_admins_controller, cmd_filters & filters.regex("^(تگ ادمین ها|tagadmins)$")))
-        client.add_handler(MessageHandler(fun_animation_controller, cmd_filters & filters.regex(r"^(فان .*|fun .*)$")))
-        client.add_handler(MessageHandler(heart_animation_controller, cmd_filters & filters.regex("^(قلب|heart)$")))
-        client.add_handler(MessageHandler(crash_management_controller, cmd_filters & filters.regex("^(افزودن کراش|حذف کراش|لیست کراش|addcrash|delcrash|listcrash)$")))
-        client.add_handler(MessageHandler(set_crash_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن کراش (.*)", flags=re.DOTALL | re.IGNORECASE)))
-        client.add_handler(MessageHandler(list_crash_replies_controller, cmd_filters & filters.regex("^لیست متن کراش$")))
-        client.add_handler(MessageHandler(delete_crash_reply_controller, cmd_filters & filters.regex(r"^حذف متن کراش(?: \d+)?$")))
-        client.add_handler(MessageHandler(comment_controller, cmd_filters & filters.regex("^(کامنت روشن|کامنت خاموش|تنظیم گروه کامنت|حذف گروه کامنت|لیست گروه کامنت|حذف لیست گروه کامنت|کامنت .*)$")))
-        client.add_handler(MessageHandler(text_mode_controller, cmd_filters & filters.regex(r"^(بولد|ایتالیک|زیرخط|خط خورده|کد|اسپویلر|منشن|هشتگ|معکوس|تدریجی) (روشن|خاموش)$")))
-        client.add_handler(MessageHandler(clean_messages_controller, cmd_filters & filters.regex(r"^(حذف|clean) (\d+)$")))
+        # Additional handlers with group=0
+        client.add_handler(MessageHandler(tag_all_controller, cmd_filters & filters.regex("^(تگ|tagall)$")), group=0)
+        client.add_handler(MessageHandler(tag_admins_controller, cmd_filters & filters.regex("^(تگ ادمین ها|tagadmins)$")), group=0)
+        client.add_handler(MessageHandler(fun_animation_controller, cmd_filters & filters.regex(r"^(فان .*|fun .*)$")), group=0)
+        client.add_handler(MessageHandler(heart_animation_controller, cmd_filters & filters.regex("^(قلب|heart)$")), group=0)
+        client.add_handler(MessageHandler(crash_management_controller, cmd_filters & filters.regex("^(افزودن کراش|حذف کراش|لیست کراش|addcrash|delcrash|listcrash)$")), group=0)
+        client.add_handler(MessageHandler(set_crash_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن کراش (.*)", flags=re.DOTALL | re.IGNORECASE)), group=0)
+        client.add_handler(MessageHandler(list_crash_replies_controller, cmd_filters & filters.regex("^لیست متن کراش$")), group=0)
+        client.add_handler(MessageHandler(delete_crash_reply_controller, cmd_filters & filters.regex(r"^حذف متن کراش(?: \d+)?$")), group=0)
+        client.add_handler(MessageHandler(text_mode_controller, cmd_filters & filters.regex(r"^(بولد|ایتالیک|زیرخط|خط خورده|کد|اسپویلر|منشن|هشتگ|معکوس|تدریجی) (روشن|خاموش)$")), group=0)
+        client.add_handler(MessageHandler(clean_messages_controller, cmd_filters & filters.regex(r"^(حذف|clean) (\d+)$")), group=0)
         
-        # New handlers without external API
-        client.add_handler(MessageHandler(myphone_controller, cmd_filters & filters.regex("^(شماره من|myphone)$")))
-        
-        # Bio clock and date handlers
-        client.add_handler(MessageHandler(bio_clock_controller, cmd_filters & filters.regex("^(ساعت بیو روشن|ساعت بیو خاموش)$")))
-        client.add_handler(MessageHandler(bio_date_controller, cmd_filters & filters.regex("^(تاریخ بیو روشن|تاریخ بیو خاموش)$")))
-        client.add_handler(MessageHandler(bio_date_type_controller, cmd_filters & filters.regex("^(نوع تاریخ میلادی|نوع تاریخ شمسی)$")))
-        client.add_handler(MessageHandler(bio_font_controller, cmd_filters & filters.regex(r"^(فونت ساعت بیو|فونت ساعت بیو \d+)$")))
-        client.add_handler(MessageHandler(spam_controller, cmd_filters & filters.regex(r"^(اسپم|spam) .+ \d+$")))
-        client.add_handler(MessageHandler(flood_controller, cmd_filters & filters.regex(r"^(فلود|flood) .+ \d+$")))
-        client.add_handler(MessageHandler(download_controller, cmd_filters & filters.reply & filters.regex("^(دانلود|download)$")))
-        client.add_handler(MessageHandler(ban_controller, cmd_filters & filters.reply & filters.regex("^(بن|ban)$")))
-        client.add_handler(MessageHandler(pin_controller, cmd_filters & filters.reply & filters.regex("^(پین|pin)$")))
-        client.add_handler(MessageHandler(unpin_controller, cmd_filters & filters.regex("^(آن پین|unpin)$")))
+        # Additional handlers with group=0
+        client.add_handler(MessageHandler(myphone_controller, cmd_filters & filters.regex("^(شماره من|myphone)$")), group=0)
+        client.add_handler(MessageHandler(bio_clock_controller, cmd_filters & filters.regex("^(ساعت بیو روشن|ساعت بیو خاموش)$")), group=0)
+        client.add_handler(MessageHandler(bio_date_controller, cmd_filters & filters.regex("^(تاریخ بیو روشن|تاریخ بیو خاموش)$")), group=0)
+        client.add_handler(MessageHandler(bio_date_type_controller, cmd_filters & filters.regex("^(نوع تاریخ میلادی|نوع تاریخ شمسی)$")), group=0)
+        client.add_handler(MessageHandler(bio_font_controller, cmd_filters & filters.regex(r"^(فونت ساعت بیو|فونت ساعت بیو \d+)$")), group=0)
+        client.add_handler(MessageHandler(spam_controller, cmd_filters & filters.regex(r"^(اسپم|spam) .+ \d+$")), group=0)
+        client.add_handler(MessageHandler(flood_controller, cmd_filters & filters.regex(r"^(فلود|flood) .+ \d+$")), group=0)
+        client.add_handler(MessageHandler(download_controller, cmd_filters & filters.reply & filters.regex("^(دانلود|download)$")), group=0)
+        client.add_handler(MessageHandler(ban_controller, cmd_filters & filters.reply & filters.regex("^(بن|ban)$")), group=0)
+        client.add_handler(MessageHandler(pin_controller, cmd_filters & filters.reply & filters.regex("^(پین|pin)$")), group=0)
+        client.add_handler(MessageHandler(unpin_controller, cmd_filters & filters.regex("^(آن پین|unpin)$")), group=0)
         
         # Add text editing mode handler for outgoing messages (simplified)
         client.add_handler(MessageHandler(text_mode_handler, filters.text & filters.me), group=-2)
 
         # Group 1: Auto-reply handlers (lower priority than commands and basic management)
-        # Added ~filters.user(user_id) to ensure these don't trigger on own messages if filters somehow match
-        client.add_handler(MessageHandler(auto_save_view_once_handler, ~filters.me & ~filters.bot & ~filters.service), group=0)  # Auto-save view once media
+        client.add_handler(MessageHandler(auto_save_view_once_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=1)  # Auto-save view once media
         client.add_handler(MessageHandler(enemy_handler, is_enemy & ~filters.me & ~filters.bot & ~filters.service), group=1)
         client.add_handler(MessageHandler(friend_handler, is_friend & ~filters.me & ~filters.bot & ~filters.service), group=1)
         client.add_handler(MessageHandler(secretary_auto_reply_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=1)
