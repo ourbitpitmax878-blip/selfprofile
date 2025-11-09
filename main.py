@@ -2718,7 +2718,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(list_friend_replies_controller, cmd_filters & filters.regex("^لیست متن دوست$")), group=0)
         client.add_handler(MessageHandler(delete_friend_reply_controller, cmd_filters & filters.regex(r"^حذف متن دوست(?: \d+)?$")), group=0)
         client.add_handler(MessageHandler(set_friend_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن دوست (.*)", flags=re.DOTALL | re.IGNORECASE)), group=0) # Allow multiline text
-        client.add_handler(MessageHandler(set_first_comment_text_controller, cmd_filters & filters.regex(r"^کامنت (.*)", flags=re.DOTALL | re.IGNORECASE)), group=0) # Allow multiline text
+        # Note: کامنت [متن] is handled by comment_controller, not a separate handler
         client.add_handler(MessageHandler(block_unblock_controller, cmd_filters & filters.reply & filters.regex("^(بلاک روشن|بلاک خاموش)$")), group=0) # Requires reply
         client.add_handler(MessageHandler(mute_unmute_controller, cmd_filters & filters.reply & filters.regex("^(سکوت روشن|سکوت خاموش)$")), group=0) # Requires reply
         client.add_handler(MessageHandler(auto_reaction_controller, cmd_filters & filters.reply & filters.regex("^(ریاکشن .*|ریاکشن خاموش)$")), group=0) # Requires reply
@@ -2738,6 +2738,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(set_crash_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن کراش (.*)", flags=re.DOTALL | re.IGNORECASE)), group=0)
         client.add_handler(MessageHandler(list_crash_replies_controller, cmd_filters & filters.regex("^لیست متن کراش$")), group=0)
         client.add_handler(MessageHandler(delete_crash_reply_controller, cmd_filters & filters.regex(r"^حذف متن کراش(?: \d+)?$")), group=0)
+        client.add_handler(MessageHandler(comment_controller, cmd_filters & filters.regex("^(حذف گروه کامنت|لیست گروه کامنت|حذف لیست گروه کامنت|کامنت .+)$")), group=0)
         client.add_handler(MessageHandler(text_mode_controller, cmd_filters & filters.regex(r"^(بولد|ایتالیک|زیرخط|خط خورده|کد|اسپویلر|منشن|هشتگ|معکوس|تدریجی) (روشن|خاموش)$")), group=0)
         client.add_handler(MessageHandler(clean_messages_controller, cmd_filters & filters.regex(r"^(حذف|clean) (\d+)$")), group=0)
         
