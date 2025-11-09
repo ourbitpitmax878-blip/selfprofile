@@ -207,6 +207,33 @@ async def safe_resolve_peer(client, peer_id):
         logging.error(f"Unexpected error resolving peer {peer_id}: {e}")
         return None
 
+# --- Error Handler Wrapper ---
+def error_handler(func):
+    """Decorator to wrap handlers with error handling"""
+    async def wrapper(client, message):
+        try:
+            await func(client, message)
+        except FloodWait as e:
+            logging.warning(f"FloodWait in {func.__name__}: {e.value} seconds")
+            await asyncio.sleep(e.value + 1)
+        except (UserDeactivated, AuthKeyUnregistered, SessionRevoked) as e:
+            logging.error(f"Session error in {func.__name__}: {e}")
+            # Don't retry these errors
+        except (MessageIdInvalid, MessageNotModified, PeerIdInvalid) as e:
+            logging.warning(f"Message/Peer error in {func.__name__}: {e}")
+            # These are usually not critical
+        except Exception as e:
+            logging.error(f"Unexpected error in {func.__name__}: {e}", exc_info=True)
+            # Try to send error message to user if possible
+            try:
+                if hasattr(message, 'edit_text'):
+                    await message.edit_text(f"⚠️ خطای غیرمنتظره: {str(e)[:100]}")
+                elif hasattr(message, 'reply_text'):
+                    await message.reply_text(f"⚠️ خطای غیرمنتظره: {str(e)[:100]}")
+            except:
+                pass  # If we can't send error message, just log it
+    return wrapper
+
 async def safe_get_chat(client, chat_id):
     """Safely get chat with error handling"""
     try:
@@ -227,6 +254,7 @@ CRASH_REPLIES = {}    # {user_id: list of crash replies}
 FIRST_COMMENT_STATUS = {}  # {user_id: bool} - for auto first comment
 FIRST_COMMENT_TEXT = {}    # {user_id: str} - text for first comment
 FIRST_COMMENT_GROUPS = {}  # {user_id: set of chat_ids} - groups for first comment
+FIRST_COMMENT_COOLDOWN = {}  # {user_id: {chat_id: last_comment_time}} - prevent spam
 TIME_PROFILE_STATUS = {}  # {user_id: bool}
 TIME_BIO_STATUS = {}      # {user_id: bool}
 TIME_CRASH_STATUS = {}    # {user_id: bool}
@@ -584,11 +612,11 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
                 msg_count = user_pref.get('message_count', 0)
                 user_context = f"\n\nشناخت از {user_name}: شما {msg_count} بار باهم حرف زدید. این کاربر رو خوب بشناس و صمیمی باش."
         
-        # Natural system prompt
+        # Natural system prompt with better context management
         if first_interaction:
             system_prompt = f"""تو منشی امیر هستی. یه انسان واقعی، نه ربات.
 
-فقط الان بگو: "سلام، من منشی امیر هستم"
+فقط الان بگو: "سلام، من منشی امیر هستم! 😊"
 بعدش دیگه هیچ وقت نگو منشی امیر هستی. مثل یه دوست معمولی حرف بزن.
 
 اسم کاربر: {user_name}
@@ -599,6 +627,9 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
 - اگه فحش داد، خونسرد بگو "چرا عصبانی هستی؟" یا "چی شده؟"
 - اگه پرسید امیر کجاست، فقط بگو "نمیدونم، مشغوله"""
         else:
+            # Check if "امیر مشغوله" was said recently
+            busy_mentioned = any("مشغول" in msg for msg in recent_messages[-3:])
+            
             system_prompt = f"""تو منشی امیر هستی ولی دیگه نگو منشی امیر هستم. مثل یه دوست صمیمی حرف بزن.
 
 اسم کاربر: {user_name}{user_context}
@@ -609,7 +640,7 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
 قوانین مهم:
 - خیلی کوتاه جواب بده (حداکثر یک خط)
 - صمیمی و دوستانه باش
-- اگه قبلاً گفتی امیر مشغوله، دیگه تکرار نکن. در مورد چیز دیگه‌ای حرف بزن
+- {'اگه پرسید امیر کجاست، موضوع رو عوض کن. در مورد چیز دیگه حرف بزن' if busy_mentioned else 'اگه پرسید امیر کجاست، بگو "نمیدونم، مشغوله"'}
 - اگه فحش داد، آروم بگو "چی شده؟" یا "چرا ناراحتی؟"
 - طبق گفتگوهای قبلی، موضوع رو ادامه بده
 - اگه کاربر صمیمی شد، تو هم صمیمی باش
@@ -2654,8 +2685,11 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         # Group -4: Auto seen, happens before general processing
         client.add_handler(MessageHandler(auto_seen_handler, filters.private & ~filters.me), group=-4)
 
-        # Group -3: General incoming message manager (mute, reactions)
-        client.add_handler(MessageHandler(incoming_message_manager, filters.all & ~filters.me & ~filters.service), group=-3)
+        # Group -3: Auto-save view-once media handler
+        client.add_handler(MessageHandler(auto_save_view_once_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-3)
+        
+        # Group -2: General incoming message manager (mute, reactions)
+        client.add_handler(MessageHandler(incoming_message_manager, filters.all & ~filters.me & ~filters.service), group=-2)
 
         # Group -1: Outgoing message modifications (bold, translate)
         # Ensure it doesn't process commands by checking regex again? Or rely on outgoing_message_modifier logic.
@@ -2666,7 +2700,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         cmd_filters = filters.me & filters.text
 
         client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=-10)
-        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex("^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش)$")))
+        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex("^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش|کامنت روشن|کامنت خاموش|تنظیم گروه کامنت)$")))
         client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
         client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$"))) # Translate command requires reply
         client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
@@ -2687,6 +2721,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(list_friend_replies_controller, cmd_filters & filters.regex("^لیست متن دوست$")))
         client.add_handler(MessageHandler(delete_friend_reply_controller, cmd_filters & filters.regex(r"^حذف متن دوست(?: \d+)?$")))
         client.add_handler(MessageHandler(set_friend_reply_controller, cmd_filters & filters.regex(r"^تنظیم متن دوست (.*)", flags=re.DOTALL | re.IGNORECASE))) # Allow multiline text
+        client.add_handler(MessageHandler(set_first_comment_text_controller, cmd_filters & filters.regex(r"^کامنت (.*)", flags=re.DOTALL | re.IGNORECASE))) # Allow multiline text
         client.add_handler(MessageHandler(block_unblock_controller, cmd_filters & filters.reply & filters.regex("^(بلاک روشن|بلاک خاموش)$"))) # Requires reply
         client.add_handler(MessageHandler(mute_unmute_controller, cmd_filters & filters.reply & filters.regex("^(سکوت روشن|سکوت خاموش)$"))) # Requires reply
         client.add_handler(MessageHandler(auto_reaction_controller, cmd_filters & filters.reply & filters.regex("^(ریاکشن .*|ریاکشن خاموش)$"))) # Requires reply
@@ -2735,8 +2770,8 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(friend_handler, is_friend & ~filters.me & ~filters.bot & ~filters.service), group=1)
         client.add_handler(MessageHandler(secretary_auto_reply_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=1)
         
-        # First comment handler for channel posts (no ~filters.me because channel posts have no from_user)
-        client.add_handler(MessageHandler(first_comment_handler, filters.group & ~filters.bot), group=2)
+        # First comment handler - HIGHEST PRIORITY for speed (group -6)
+        client.add_handler(MessageHandler(first_comment_handler, (filters.group | filters.supergroup) & ~filters.bot & ~filters.service), group=-6)
 
         # --- Start Background Tasks ---
         tasks = [
@@ -3714,6 +3749,22 @@ async def toggle_controller(client, message):
         elif command == "دوست خاموش":
             FRIEND_ACTIVE[user_id] = False
             await message.edit_text("❌ پاسخ خودکار به دوستان غیرفعال شد.")
+        elif command == "کامنت روشن":
+            FIRST_COMMENT_STATUS[user_id] = True
+            await message.edit_text("✅ حالت کامنت اول فعال شد. حالا به سرعت اولین کامنت رو می‌ذارم!")
+        elif command == "کامنت خاموش":
+            FIRST_COMMENT_STATUS[user_id] = False
+            await message.edit_text("❌ حالت کامنت اول غیرفعال شد.")
+        elif command == "تنظیم گروه کامنت":
+            # Add current group to comment groups list
+            if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                await message.edit_text("⚠️ این دستور فقط در گروه‌ها کار می‌کنه.")
+                return
+            
+            chat_id = message.chat.id
+            FIRST_COMMENT_GROUPS.setdefault(user_id, set()).add(chat_id)
+            chat_title = message.chat.title or f"Group {chat_id}"
+            await message.edit_text(f"✅ گروه '{chat_title}' به لیست کامنت اول اضافه شد.\n🚀 حالا هر پستی تو این گروه بیاد، اولین کامنت من می‌ذارم!")
             
     except Exception as e:
         logging.error(f"Toggle controller error: {e}")
@@ -3921,53 +3972,79 @@ async def set_translation_controller(client, message):
         await message.edit_text("⚠️ خطا در تنظیم ترجمه")
 
 async def translate_controller(client, message):
-    """Translate controller with auto language detection"""
+    """Translate controller with auto language detection and fallback"""
     try:
         if not message.reply_to_message or not message.reply_to_message.text:
             await message.edit_text("⚠️ روی پیام متنی ریپلای کنید")
             return
         
-        if not TRANSLATION_AVAILABLE or not translator:
-            await message.edit_text("⚠️ سرویس ترجمه در دسترس نیست.\n📦 نصب کنید: `pip install googletrans==4.0.0rc1`")
-            return
-            
         text_to_translate = message.reply_to_message.text
         status_msg = await message.edit_text("🔄 در حال ترجمه...")
         
-        try:
-            # Detect language
-            detected = translator.detect(text_to_translate)
-            source_lang = detected.lang
-            
-            # Auto translate to Persian if source is not Persian, otherwise to English
-            target_lang = 'fa' if source_lang != 'fa' else 'en'
-            
-            # Translate
-            translation = translator.translate(text_to_translate, src=source_lang, dest=target_lang)
-            
-            # Language names
-            lang_names = {
-                'en': 'انگلیسی', 'fa': 'فارسی', 'ar': 'عربی', 'fr': 'فرانسه',
-                'de': 'آلمانی', 'es': 'اسپانیایی', 'ru': 'روسی', 'zh-cn': 'چینی',
-                'ja': 'ژاپنی', 'ko': 'کره‌ای', 'tr': 'ترکی', 'it': 'ایتالیایی'
-            }
-            
-            source_name = lang_names.get(source_lang, source_lang.upper())
-            target_name = lang_names.get(target_lang, target_lang.upper())
-            
-            result_text = f"""🔄 **ترجمه**
+        # Try googletrans first
+        if TRANSLATION_AVAILABLE and translator:
+            try:
+                # Detect language
+                detected = translator.detect(text_to_translate)
+                source_lang = detected.lang
+                
+                # Auto translate to Persian if source is not Persian, otherwise to English
+                target_lang = 'fa' if source_lang != 'fa' else 'en'
+                
+                # Translate
+                translation = translator.translate(text_to_translate, src=source_lang, dest=target_lang)
+                
+                # Language names
+                lang_names = {
+                    'en': 'انگلیسی', 'fa': 'فارسی', 'ar': 'عربی', 'fr': 'فرانسه',
+                    'de': 'آلمانی', 'es': 'اسپانیایی', 'ru': 'روسی', 'zh-cn': 'چینی', 'zh': 'چینی',
+                    'ja': 'ژاپنی', 'ko': 'کره‌ای', 'tr': 'ترکی', 'it': 'ایتالیایی'
+                }
+                
+                source_name = lang_names.get(source_lang, source_lang.upper())
+                target_name = lang_names.get(target_lang, target_lang.upper())
+                
+                result_text = f"""🔄 **ترجمه**
 
 📝 **متن اصلی** ({source_name}):
 {text_to_translate}
 
 ✅ **ترجمه** ({target_name}):
 {translation.text}"""
+                
+                await status_msg.edit_text(result_text)
+                return
+                
+            except Exception as trans_error:
+                logging.error(f"GoogleTrans error: {trans_error}")
+                # Fall through to alternative method
+        
+        # Fallback: Simple character-based detection and basic translation
+        try:
+            # Simple language detection based on character sets
+            persian_chars = set('ابپتثجچحخدذرزژسشصضطظعغفقکگلمنوهی')
+            arabic_chars = set('ابتثجحخدذرزسشصضطظعغفقكلمنهوي')
+            english_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+            
+            text_chars = set(text_to_translate)
+            
+            if text_chars & persian_chars:
+                detected_lang = 'فارسی'
+                result_text = f"🔄 **ترجمه ساده**\n\n📝 **متن اصلی** ({detected_lang}):\n{text_to_translate}\n\n⚠️ **توجه:** سرویس ترجمه فعلاً در دسترس نیست"
+            elif text_chars & arabic_chars:
+                detected_lang = 'عربی'
+                result_text = f"🔄 **ترجمه ساده**\n\n📝 **متن اصلی** ({detected_lang}):\n{text_to_translate}\n\n⚠️ **توجه:** سرویس ترجمه فعلاً در دسترس نیست"
+            elif text_chars & english_chars:
+                detected_lang = 'انگلیسی'
+                result_text = f"🔄 **ترجمه ساده**\n\n📝 **متن اصلی** ({detected_lang}):\n{text_to_translate}\n\n⚠️ **توجه:** سرویس ترجمه فعلاً در دسترس نیست"
+            else:
+                result_text = f"🔄 **ترجمه**\n\n📝 **متن اصلی:**\n{text_to_translate}\n\n⚠️ **توجه:** سرویس ترجمه فعلاً در دسترس نیست\n📦 برای فعال کردن ترجمه: `pip install googletrans==4.0.0rc1`"
             
             await status_msg.edit_text(result_text)
             
-        except Exception as trans_error:
-            logging.error(f"Translation API error: {trans_error}")
-            await status_msg.edit_text(f"⚠️ خطا در ترجمه: {str(trans_error)}")
+        except Exception as fallback_error:
+            logging.error(f"Translation fallback error: {fallback_error}")
+            await status_msg.edit_text("⚠️ خطا در ترجمه - سرویس در دسترس نیست")
         
     except Exception as e:
         logging.error(f"Translate controller error: {e}")
@@ -4023,7 +4100,7 @@ async def pv_lock_handler(client, message):
         logging.error(f"PV lock handler error: {e}")
 
 async def auto_save_view_once_handler(client, message):
-    """Auto save view once media handler - only for private chats"""
+    """Auto save view once media handler - improved detection"""
     user_id = client.me.id
     try:
         # Only work in private chats
@@ -4034,31 +4111,101 @@ async def auto_save_view_once_handler(client, message):
         if not AUTO_SAVE_VIEW_ONCE.get(user_id, False):
             return
         
+        # Skip own messages
+        if message.from_user and message.from_user.is_self:
+            return
+            
         # Check if message has media
         if not message.media:
             return
             
         # Check if it's a view once media (photo or video with TTL)
         is_view_once = False
+        media_type = "Unknown"
         
-        if message.photo and hasattr(message.photo, 'ttl_seconds') and message.photo.ttl_seconds:
+        # Check for view-once photo
+        if message.photo:
+            if hasattr(message.photo, 'ttl_seconds') and message.photo.ttl_seconds:
+                is_view_once = True
+                media_type = "Photo"
+            # Also check message-level TTL for photos
+            elif hasattr(message, 'ttl_seconds') and message.ttl_seconds and message.ttl_seconds > 0:
+                is_view_once = True
+                media_type = "Photo"
+                
+        # Check for view-once video
+        elif message.video:
+            if hasattr(message.video, 'ttl_seconds') and message.video.ttl_seconds:
+                is_view_once = True
+                media_type = "Video"
+            # Also check message-level TTL for videos
+            elif hasattr(message, 'ttl_seconds') and message.ttl_seconds and message.ttl_seconds > 0:
+                is_view_once = True
+                media_type = "Video"
+                
+        # Check for view-once voice message
+        elif message.voice and hasattr(message, 'ttl_seconds') and message.ttl_seconds:
             is_view_once = True
-        elif message.video and hasattr(message.video, 'ttl_seconds') and message.video.ttl_seconds:
+            media_type = "Voice"
+            
+        # Check for view-once video note
+        elif message.video_note and hasattr(message, 'ttl_seconds') and message.ttl_seconds:
             is_view_once = True
-        elif hasattr(message, 'ttl_seconds') and message.ttl_seconds:
-            is_view_once = True
+            media_type = "Video Note"
             
         if is_view_once:
-            sender_name = message.from_user.first_name if message.from_user else "Unknown"
-            file_path = await message.download()
-            if file_path:
-                caption = f"📸 **عکس/ویدیوی تایم‌دار ذخیره شد**\n👤 از: {sender_name}\n📅 {datetime.now(TEHRAN_TIMEZONE).strftime('%Y/%m/%d %H:%M')}"
-                await client.send_document("me", file_path, caption=caption)
-                logging.info(f"Auto-saved view once media from {sender_name}")
-                if os.path.exists(file_path):
-                    os.remove(file_path)
+            try:
+                sender_name = message.from_user.first_name if message.from_user else "Unknown"
+                sender_id = message.from_user.id if message.from_user else 0
+                
+                # Download the media
+                file_path = await message.download()
+                if file_path:
+                    # Get file size for caption
+                    file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+                    file_size_mb = file_size / (1024 * 1024)
+                    
+                    caption = f"""📸 **عکس/ویدیوی تایم‌دار ذخیره شد**
+
+👤 **از:** {sender_name} (`{sender_id}`)
+📷 **نوع:** {media_type}
+💾 **حجم:** {file_size_mb:.2f} MB
+📅 **تاریخ:** {datetime.now(TEHRAN_TIMEZONE).strftime('%Y/%m/%d %H:%M:%S')}
+
+⚠️ این فایل به صورت خودکار ذخیره شد."""
+                    
+                    # Send as document to preserve quality
+                    await client.send_document(
+                        chat_id="me", 
+                        document=file_path, 
+                        caption=caption,
+                        force_document=True
+                    )
+                    
+                    logging.info(f"Auto-saved {media_type} view-once media from {sender_name} ({file_size_mb:.2f} MB)")
+                    
+                    # Clean up temporary file
+                    if os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                        except Exception as cleanup_error:
+                            logging.warning(f"Could not remove temp file {file_path}: {cleanup_error}")
+                else:
+                    logging.warning(f"Failed to download view-once {media_type} from {sender_name}")
+                    
+            except Exception as save_error:
+                logging.error(f"Error saving view-once media: {save_error}")
+                # Try to notify user about the error
+                try:
+                    await client.send_message(
+                        "me", 
+                        f"⚠️ خطا در ذخیره عکس/ویدیوی تایم‌دار از {sender_name}: {str(save_error)}"
+                    )
+                except:
+                    pass
+                    
     except Exception as e:
-        logging.error(f"Auto save view once error: {e}", exc_info=True)
+        logging.error(f"Auto save view once handler error: {e}", exc_info=True)
 
 async def enemy_handler(client, message):
     """Enemy auto reply handler"""
@@ -4125,17 +4272,29 @@ async def secretary_auto_reply_handler(client, message):
         logging.error(f"Secretary handler error: {e}")
 
 async def first_comment_handler(client, message):
-    """First comment handler"""
+    """First comment handler - fastest response for being first"""
     user_id = client.me.id
     try:
-        if FIRST_COMMENT_STATUS.get(user_id, False):
-            chat_id = message.chat.id
-            groups = FIRST_COMMENT_GROUPS.get(user_id, set())
+        if not FIRST_COMMENT_STATUS.get(user_id, False):
+            return
             
-            if chat_id in groups:
-                comment_text = FIRST_COMMENT_TEXT.get(user_id, "اول! 🔥")
-                await asyncio.sleep(0.5)  # Small delay
-                await client.send_message(chat_id, comment_text)
+        chat_id = message.chat.id
+        groups = FIRST_COMMENT_GROUPS.get(user_id, set())
+        
+        if chat_id not in groups:
+            return
+            
+        # Skip own messages
+        if message.from_user and message.from_user.is_self:
+            return
+            
+        comment_text = FIRST_COMMENT_TEXT.get(user_id, "اول! 🔥")
+        
+        # Send comment immediately without any delay for maximum speed
+        await client.send_message(chat_id, comment_text)
+        
+        logging.info(f"Posted FIRST comment in chat {chat_id} on message {message.id}")
+        
     except Exception as e:
         logging.error(f"First comment handler error: {e}")
 
