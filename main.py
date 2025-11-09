@@ -268,7 +268,7 @@ AUTO_SAVE_VIEW_ONCE = {}  # {user_id: bool} - ذخیره خودکار عکس‌�
 async def save_conversation_to_learning_db(user_id: int, sender_id: int, user_message: str, ai_response: str, sender_name: str):
     """Save conversation to MongoDB learning database with total size limit"""
     try:
-        if not learning_collection:
+        if learning_collection is None:
             logging.warning("MongoDB learning collection not available")
             return
         
@@ -320,7 +320,7 @@ async def save_conversation_to_learning_db(user_id: int, sender_id: int, user_me
 async def get_learning_db_size():
     """Get total size of learning database in MB"""
     try:
-        if not learning_collection:
+        if learning_collection is None:
             return 0
         
         # Get all documents and calculate total size
@@ -337,7 +337,7 @@ async def get_learning_db_size():
 async def update_learning_patterns(user_id: int, user_message: str, ai_response: str, sender_name: str):
     """Update learning patterns in MongoDB"""
     try:
-        if not learning_collection:
+        if learning_collection is None:
             return
         
         # Track word patterns
@@ -452,7 +452,7 @@ async def update_learning_patterns(user_id: int, user_message: str, ai_response:
 async def get_learned_response_suggestions(user_id: int, user_message: str, sender_name: str) -> list:
     """Get response suggestions based on learned patterns from MongoDB"""
     try:
-        if not learning_collection:
+        if learning_collection is None:
             return []
         
         suggestions = []
@@ -3535,7 +3535,7 @@ async def toggle_controller(client, message):
                 await message.edit_text(f"❌ تست AI ناموفق:\n{str(e)}")
         elif command == "وضعیت یادگیری":
             try:
-                if not learning_collection:
+                if learning_collection is None:
                     await message.edit_text("❌ MongoDB در دسترس نیست.")
                     return
                 
@@ -3592,7 +3592,7 @@ async def toggle_controller(client, message):
                 await message.edit_text(f"❌ خطا در نمایش وضعیت: {str(e)}")
         elif command == "بکاپ یادگیری":
             try:
-                if not learning_collection:
+                if learning_collection is None:
                     await message.edit_text("❌ MongoDB در دسترس نیست.")
                     return
                 
@@ -3668,7 +3668,7 @@ async def toggle_controller(client, message):
                 await message.edit_text(f"❌ خطا در تهیه بکاپ: {str(e)}")
         elif command == "پاکسازی یادگیری":
             try:
-                if not learning_collection:
+                if learning_collection is None:
                     await message.edit_text("❌ MongoDB در دسترس نیست.")
                     return
                 
