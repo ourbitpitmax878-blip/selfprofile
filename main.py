@@ -184,94 +184,11 @@ CLOUDFLARE_ACCOUNT_ID = "ce2e4697a5504848b6f18b15dda6eee9"
 CLOUDFLARE_API_TOKEN = "oG_r_b0Y-7exOWXcrg9MlLa1fPW9fkepcGU-DfhW"
 CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3-8b-instruct"
 
-# --- Safe Peer Resolution ---
-async def safe_resolve_peer(client, peer_id):
-    """Safely resolve peer with error handling"""
-    try:
-        return await client.resolve_peer(peer_id)
-    except (ValueError, KeyError, PeerIdInvalid) as e:
-        logging.warning(f"Could not resolve peer {peer_id}: {e}")
-        return None
-    except Exception as e:
-        logging.error(f"Unexpected error resolving peer {peer_id}: {e}")
-        return None
-
-async def safe_get_chat(client, chat_id):
-    """Safely get chat with error handling"""
-    try:
-        return await client.get_chat(chat_id)
-    except (ValueError, KeyError, PeerIdInvalid) as e:
-        logging.warning(f"Could not get chat {chat_id}: {e}")
-        return None
-    except Exception as e:
-        logging.error(f"Unexpected error getting chat {chat_id}: {e}")
-        return None
-
-# --- Additional Variables for New Features ---
-TEXT_EDIT_MODES = {}  # {user_id: {'hashtag': bool, 'bold': bool, 'italic': bool, etc.}}
-COMMENT_STATUS = {}   # {user_id: bool}
-COMMENT_TEXT = {}     # {user_id: str}
-CRASH_LIST = {}       # {user_id: set of crash user_ids}
-CRASH_REPLIES = {}    # {user_id: list of crash replies}
+# --- First Comment Variables ---
 FIRST_COMMENT_STATUS = {}  # {user_id: bool} - for auto first comment
 FIRST_COMMENT_TEXT = {}    # {user_id: str} - text for first comment
 FIRST_COMMENT_GROUPS = {}  # {user_id: set of chat_ids} - groups for first comment
-TIME_PROFILE_STATUS = {}  # {user_id: bool}
-TIME_BIO_STATUS = {}      # {user_id: bool}
-TIME_CRASH_STATUS = {}    # {user_id: bool}
-BIO_CLOCK_STATUS = {}     # {user_id: bool} - ساعت در بیو
-BIO_DATE_STATUS = {}      # {user_id: bool} - تاریخ در بیو
-BIO_DATE_TYPE = {}        # {user_id: 'jalali' or 'gregorian'} - نوع تاریخ
-BIO_FONT_CHOICE = {}      # {user_id: str} - فونت ساعت بیو
-AUTO_SAVE_VIEW_ONCE = {}  # {user_id: bool} - ذخیره خودکار عکس‌های تایم‌دار
-
-# --- JSON Database Functions (from self.txt) ---
-async def get_json_data(file_path):
-    """Get data from JSON file"""
-    try:
-        if os.path.exists(file_path):
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                return json.loads(content)
-        else:
-            # Default data structure
-            return {
-                'timename': 'off', 'timebio': 'off', 'timeprofile': 'off', 'timecrash': 'off',
-                'bot': 'on', 'hashtag': 'off', 'bold': 'off', 'italic': 'off', 'delete': 'off',
-                'code': 'off', 'underline': 'off', 'reverse': 'off', 'part': 'off',
-                'mention': 'off', 'spoiler': 'off', 'comment': 'on', 'text': 'first !',
-                'typing': 'off', 'game': 'off', 'voice': 'off', 'video': 'off', 'sticker': 'off',
-                'crash': [], 'enemy': []
-            }
-    except Exception as e:
-        logging.error(f"Error reading JSON file {file_path}: {e}")
-        return {}
-
-async def put_json_data(file_path, data):
-    """Save data to JSON file"""
-    try:
-        async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(data, ensure_ascii=False, indent=2))
-    except Exception as e:
-        logging.error(f"Error writing JSON file {file_path}: {e}")
-
-def font_transform(text):
-    """Transform text to small caps style"""
-    text = text.lower()
-    return text.translate(text.maketrans('qwertyuiopasdfghjklzxcvbnm','ǫᴡᴇʀᴛʏᴜɪᴏᴘᴀsᴅғɢʜᴊᴋʟᴢxᴄᴠʙɴᴍ'))
-
-async def make_requests(url, **kwargs):
-    """Make HTTP requests"""
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, **kwargs) as result:
-                try:
-                    return json.loads(await result.text())
-                except:
-                    return await result.read()
-    except Exception as e:
-        logging.error(f"Request error: {e}")
-        return None
+FIRST_COMMENT_COOLDOWN = {}  # {user_id: {chat_id: last_comment_time}} - prevent spam
 
 # --- AI Learning Database Functions ---
 async def save_conversation_to_learning_db(user_id: int, sender_id: int, user_message: str, ai_response: str, sender_name: str):
@@ -645,6 +562,7 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
                                 if first_interaction:
                                     ai_response = f"سلام، من منشی امیر هستم. {simple_responses[0]}"
                                 else:
+                                    import random
                                     ai_response = random.choice(simple_responses)
                             
                             # Add response to conversation history
@@ -672,6 +590,95 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
         logging.error(f"Error calling Cloudflare AI: {e}")
         intro = "سلام! من منشی امیر هستم. " if first_interaction else "سلام! "
         return f"{intro}الان مشغولم، بعداً برمی‌گردم!"
+
+# --- Safe Peer Resolution ---
+async def safe_resolve_peer(client, peer_id):
+    """Safely resolve peer with error handling"""
+    try:
+        return await client.resolve_peer(peer_id)
+    except (ValueError, KeyError, PeerIdInvalid) as e:
+        logging.warning(f"Could not resolve peer {peer_id}: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"Unexpected error resolving peer {peer_id}: {e}")
+        return None
+
+async def safe_get_chat(client, chat_id):
+    """Safely get chat with error handling"""
+    try:
+        return await client.get_chat(chat_id)
+    except (ValueError, KeyError, PeerIdInvalid) as e:
+        logging.warning(f"Could not get chat {chat_id}: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"Unexpected error getting chat {chat_id}: {e}")
+        return None
+
+# --- Additional Variables for New Features ---
+TEXT_EDIT_MODES = {}  # {user_id: {'hashtag': bool, 'bold': bool, 'italic': bool, etc.}}
+COMMENT_STATUS = {}   # {user_id: bool}
+COMMENT_TEXT = {}     # {user_id: str}
+CRASH_LIST = {}       # {user_id: set of crash user_ids}
+CRASH_REPLIES = {}    # {user_id: list of crash replies}
+FIRST_COMMENT_STATUS = {}  # {user_id: bool} - for auto first comment
+FIRST_COMMENT_TEXT = {}    # {user_id: str} - text for first comment
+FIRST_COMMENT_GROUPS = {}  # {user_id: set of chat_ids} - groups for first comment
+TIME_PROFILE_STATUS = {}  # {user_id: bool}
+TIME_BIO_STATUS = {}      # {user_id: bool}
+TIME_CRASH_STATUS = {}    # {user_id: bool}
+BIO_CLOCK_STATUS = {}     # {user_id: bool} - ساعت در بیو
+BIO_DATE_STATUS = {}      # {user_id: bool} - تاریخ در بیو
+BIO_DATE_TYPE = {}        # {user_id: 'jalali' or 'gregorian'} - نوع تاریخ
+BIO_FONT_CHOICE = {}      # {user_id: str} - فونت ساعت بیو
+AUTO_SAVE_VIEW_ONCE = {}  # {user_id: bool} - ذخیره خودکار عکس‌های تایم‌دار
+
+# --- JSON Database Functions (from self.txt) ---
+async def get_json_data(file_path):
+    """Get data from JSON file"""
+    try:
+        if os.path.exists(file_path):
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                return json.loads(content)
+        else:
+            # Default data structure
+            return {
+                'timename': 'off', 'timebio': 'off', 'timeprofile': 'off', 'timecrash': 'off',
+                'bot': 'on', 'hashtag': 'off', 'bold': 'off', 'italic': 'off', 'delete': 'off',
+                'code': 'off', 'underline': 'off', 'reverse': 'off', 'part': 'off',
+                'mention': 'off', 'spoiler': 'off', 'comment': 'on', 'text': 'first !',
+                'typing': 'off', 'game': 'off', 'voice': 'off', 'video': 'off', 'sticker': 'off',
+                'crash': [], 'enemy': []
+            }
+    except Exception as e:
+        logging.error(f"Error reading JSON file {file_path}: {e}")
+        return {}
+
+async def put_json_data(file_path, data):
+    """Save data to JSON file"""
+    try:
+        async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(data, ensure_ascii=False, indent=2))
+    except Exception as e:
+        logging.error(f"Error writing JSON file {file_path}: {e}")
+
+def font_transform(text):
+    """Transform text to small caps style"""
+    text = text.lower()
+    return text.translate(text.maketrans('qwertyuiopasdfghjklzxcvbnm','ǫᴡᴇʀᴛʏᴜɪᴏᴘᴀsᴅғɢʜᴊᴋʟᴢxᴄᴠʙɴᴍ'))
+
+async def make_requests(url, **kwargs):
+    """Make HTTP requests"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, **kwargs) as result:
+                try:
+                    return json.loads(await result.text())
+                except:
+                    return await result.read()
+    except Exception as e:
+        logging.error(f"Request error: {e}")
+        return None
 
 # Clock image creation function (from self.txt)
 async def make_clock_image(h, m, s, read_path, write_path):
@@ -703,7 +710,7 @@ async def make_clock_image(h, m, s, read_path, write_path):
         logging.error(f"Error creating clock image: {e}")
         return None
 
-COMMAND_REGEX = r"^(تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش|بولد روشن|بولد خاموش|ایتالیک روشن|ایتالیک خاموش|زیرخط روشن|زیرخط خاموش|خط خورده روشن|خط خورده خاموش|کد روشن|کد خاموش|اسپویلر روشن|اسپویلر خاموش|منشن روشن|منشن خاموش|هشتگ روشن|هشتگ خاموش|معکوس روشن|معکوس خاموش|تدریجی روشن|تدریجی خاموش|سین روشن|سین خاموش|ساعت روشن|ساعت خاموش|ساعت بیو روشن|ساعت بیو خاموش|تاریخ بیو روشن|تاریخ بیو خاموش|نوع تاریخ میلادی|نوع تاریخ شمسی|فونت|فونت \d+|فونت ساعت بیو|فونت ساعت بیو \d+|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|منشی متن(?: |$)(.*)|کامنت روشن|کامنت خاموش|کامنت .*|تنظیم گروه کامنت|حذف گروه کامنت|لیست گروه کامنت|حذف لیست گروه کامنت|انتی لوگین روشن|انتی لوگین خاموش|پیوی قفل|پیوی باز|ذخیره روشن|ذخیره خاموش|تکرار \d+( \d+)?|حذف همه|حذف(?: \d+)?|دشمن روشن|دشمن خاموش|تنظیم دشمن|حذف دشمن|پاکسازی لیست دشمن|لیست دشمن|لیست متن دشمن|تنظیم متن دشمن .*|حذف متن دشمن(?: \d+)?|دوست روشن|دوست خاموش|تنظیم دوست|حذف دوست|پاکسازی لیست دوست|لیست دوست|لیست متن دوست|تنظیم متن دوست .*|حذف متن دوست(?: \d+)?|بلاک روشن|بلاک خاموش|سکوت روشن|سکوت خاموش|ریاکشن .*|ریاکشن خاموش|کپی روشن|کپی خاموش|ping|پینگ|راهنما|ترجمه|تگ|تگ ادمین ها|فان .*|قلب|حذف \d+|افزودن کراش|حذف کراش|لیست کراش|تنظیم متن کراش .*|لیست متن کراش|حذف متن کراش(?: \d+)?|کامنت روشن|کامنت خاموش|تنظیم گروه کامنت|حذف گروه کامنت|لیست گروه کامنت|حذف لیست گروه کامنت|کامنت .*|اسپم .*|فلود .*|دانلود|بن|پین|آن پین|شماره من)$"
+COMMAND_REGEX = r"^(تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش|بولد روشن|بولد خاموش|ایتالیک روشن|ایتالیک خاموش|زیرخط روشن|زیرخط خاموش|خط خورده روشن|خط خورده خاموش|کد روشن|کد خاموش|اسپویلر روشن|اسپویلر خاموش|منشن روشن|منشن خاموش|هشتگ روشن|هشتگ خاموش|معکوس روشن|معکوس خاموش|تدریجی روشن|تدریجی خاموش|سین روشن|سین خاموش|ساعت روشن|ساعت خاموش|ساعت بیو روشن|ساعت بیو خاموش|تاریخ بیو روشن|تاریخ بیو خاموش|نوع تاریخ میلادی|نوع تاریخ شمسی|فونت|فونت \d+|فونت ساعت بیو|فونت ساعت بیو \d+|منشی روشن|منشی خاموش|منشی متن(?: |$)(.*)|انتی لوگین روشن|انتی لوگین خاموش|پیوی قفل|پیوی باز|ذخیره روشن|ذخیره خاموش|تکرار \d+( \d+)?|حذف همه|حذف(?: \d+)?|دشمن روشن|دشمن خاموش|تنظیم دشمن|حذف دشمن|پاکسازی لیست دشمن|لیست دشمن|لیست متن دشمن|تنظیم متن دشمن .*|حذف متن دشمن(?: \d+)?|دوست روشن|دوست خاموش|تنظیم دوست|حذف دوست|پاکسازی لیست دوست|لیست دوست|لیست متن دوست|تنظیم متن دوست .*|حذف متن دوست(?: \d+)?|بلاک روشن|بلاک خاموش|سکوت روشن|سکوت خاموش|ریاکشن .*|ریاکشن خاموش|کپی روشن|کپی خاموش|ping|پینگ|راهنما|ترجمه|تگ|تگ ادمین ها|فان .*|قلب|حذف \d+|افزودن کراش|حذف کراش|لیست کراش|تنظیم متن کراش .*|لیست متن کراش|حذف متن کراش(?: \d+)?|کامنت روشن|کامنت خاموش|تنظیم گروه کامنت|حذف گروه کامنت|لیست گروه کامنت|حذف لیست گروه کامنت|کامنت .*|اسپم .*|فلود .*|دانلود|بن|پین|آن پین|شماره من)$"
 
 # --- Main Bot Functions ---
 def stylize_time(time_str: str, style: str) -> str:
@@ -1102,57 +1109,25 @@ async def friend_handler(client, message):
         logging.warning(f"Friend Handler: Could not reply to message {message.id} for user {user_id}: {e}")
 
 async def secretary_auto_reply_handler(client, message):
-    """Secretary auto reply handler - with AI support"""
-    user_id = client.me.id
-    try:
-        # Check if message is in private chat from another user
-        if not (message.chat.type == ChatType.PRIVATE and
-                message.from_user and not message.from_user.is_self and
-                not message.from_user.is_bot):
-            return
-        
-        # Check if AI secretary is enabled
-        if AI_SECRETARY_STATUS.get(user_id, False):
-            sender_id = message.from_user.id
-            try:
-                # Get sender info
-                sender_name = message.from_user.first_name or "کاربر"
-                user_message = message.text or message.caption or "پیام"
-                
-                # Get AI response
-                logging.info(f"AI Secretary: Getting response for message from {sender_name}")
-                ai_response = await get_ai_response(user_message, sender_name, user_id, sender_id)
-                
-                # Reply with AI response
-                await message.reply_text(ai_response)
-                logging.info(f"AI Secretary: Replied to {sender_name}")
-                
-            except Exception as ai_error:
-                logging.error(f"AI Secretary error: {ai_error}")
-                # Fallback to simple response
-                try:
-                    sender_name = message.from_user.first_name or "دوست"
-                    await message.reply_text(f"سلام {sender_name}! من منشی امیر هستم. الان یکم مشکل فنی دارم، بعداً دوباره تماس بگیر!")
-                except Exception as fallback_error:
-                    logging.error(f"AI Secretary fallback error: {fallback_error}")
-        
-        # Regular secretary mode (original)
-        elif SECRETARY_MODE_STATUS.get(user_id, False):
-            target_user_id = message.from_user.id
-            replied_users_today = USERS_REPLIED_IN_SECRETARY.setdefault(user_id, set())
+    owner_user_id = client.me.id
+    if (message.chat.type == ChatType.PRIVATE and
+            message.from_user and not message.from_user.is_self and
+            not message.from_user.is_bot and
+            SECRETARY_MODE_STATUS.get(owner_user_id, False)):
 
-            if target_user_id not in replied_users_today:
-                reply_message_text = CUSTOM_SECRETARY_MESSAGES.get(user_id, DEFAULT_SECRETARY_MESSAGE)
-                try:
-                    await message.reply_text(reply_message_text, quote=True)
-                    replied_users_today.add(target_user_id)
-                except FloodWait as e:
-                     logging.warning(f"Secretary Handler: Flood wait replying for user {user_id}: {e.value}s")
-                     await asyncio.sleep(e.value + 1)
-                except Exception as e:
-                    logging.warning(f"Secretary Handler: Could not auto-reply to user {target_user_id} for owner {user_id}: {e}")
-    except Exception as e:
-        logging.error(f"Secretary handler error: {e}")
+        target_user_id = message.from_user.id
+        replied_users_today = USERS_REPLIED_IN_SECRETARY.setdefault(owner_user_id, set())
+
+        if target_user_id not in replied_users_today:
+            reply_message_text = CUSTOM_SECRETARY_MESSAGES.get(owner_user_id, DEFAULT_SECRETARY_MESSAGE)
+            try:
+                await message.reply_text(reply_message_text, quote=True)
+                replied_users_today.add(target_user_id)
+            except FloodWait as e:
+                 logging.warning(f"Secretary Handler: Flood wait replying for user {owner_user_id}: {e.value}s")
+                 await asyncio.sleep(e.value + 1)
+            except Exception as e:
+                logging.warning(f"Secretary Handler: Could not auto-reply to user {target_user_id} for owner {owner_user_id}: {e}")
 
 async def pv_lock_handler(client, message):
     owner_user_id = client.me.id
@@ -1296,10 +1271,7 @@ async def toggle_controller(client, message):
             elif feature == "سین":
                 if not AUTO_SEEN_STATUS.get(user_id, False): AUTO_SEEN_STATUS[user_id] = True; status_changed = True
             elif feature == "منشی":
-                if not SECRETARY_MODE_STATUS.get(user_id, False): 
-                    SECRETARY_MODE_STATUS[user_id] = True
-                    AI_SECRETARY_STATUS[user_id] = False  # Disable AI secretary when enabling regular
-                    status_changed = True
+                if not SECRETARY_MODE_STATUS.get(user_id, False): SECRETARY_MODE_STATUS[user_id] = True; status_changed = True
             elif feature == "انتی لوگین":
                 if not ANTI_LOGIN_STATUS.get(user_id, False): ANTI_LOGIN_STATUS[user_id] = True; status_changed = True
             elif feature == "تایپ":
@@ -1322,186 +1294,6 @@ async def toggle_controller(client, message):
             else:
                 await message.edit_text(f"ℹ️ {feature} از قبل فعال بود.")
 
-        elif command == "منشی خودکار روشن":
-            AI_SECRETARY_STATUS[user_id] = True
-            SECRETARY_MODE_STATUS[user_id] = False  # Disable regular secretary
-            await message.edit_text("✅ منشی خودکار فعال شد.\n🤖 پیام‌های PV به صورت خودکار با هوش مصنوعی پاسخ داده می‌شوند.")
-        elif command == "منشی خودکار خاموش":
-            if AI_SECRETARY_STATUS.get(user_id, False):
-                AI_SECRETARY_STATUS[user_id] = False
-                await message.edit_text("❌ منشی خودکار غیرفعال شد.")
-            else:
-                await message.edit_text("ℹ️ منشی خودکار از قبل غیرفعال بود.")
-        elif command == "تست ai":
-            try:
-                test_msg = await message.edit_text("🔄 در حال تست اتصال AI...")
-                test_response = await get_ai_response("سلام، تست اتصال", "تست", user_id, user_id)
-                await test_msg.edit_text(f"✅ تست AI موفق:\n\n{test_response}")
-            except Exception as e:
-                logging.error(f"AI test error: {e}", exc_info=True)
-                await message.edit_text(f"❌ تست AI ناموفق:\n{str(e)}")
-        elif command == "وضعیت یادگیری":
-            try:
-                if learning_collection is None:
-                    await message.edit_text("❌ MongoDB در دسترس نیست.")
-                    return
-                
-                status_msg = await message.edit_text("🔄 در حال بررسی دیتابیس...")
-                
-                # Get statistics from MongoDB
-                try:
-                    total_conversations = learning_collection.count_documents({'type': 'conversation'})
-                    total_patterns = learning_collection.count_documents({'type': 'pattern'})
-                    total_response_patterns = learning_collection.count_documents({'type': 'response_pattern'})
-                    total_user_prefs = learning_collection.count_documents({'type': 'user_preference'})
-                except Exception as db_error:
-                    logging.error(f"MongoDB count error: {db_error}")
-                    await status_msg.edit_text(f"❌ خطا در اتصال به MongoDB: {str(db_error)}")
-                    return
-                
-                # Calculate total size
-                try:
-                    total_size_mb = await get_learning_db_size()
-                except Exception as size_error:
-                    logging.error(f"Size calculation error: {size_error}")
-                    total_size_mb = 0.0
-                
-                status_text = f"""📊 **وضعیت دیتابیس یادگیری MongoDB:**
-                
-🗣️ **تعداد گفتگوها:** {total_conversations:,}
-🧠 **الگوهای کلمات:** {total_patterns:,}
-🔄 **الگوهای پاسخ:** {total_response_patterns:,}
-👥 **ترجیحات کاربران:** {total_user_prefs:,}
-💾 **حجم کل دیتابیس:** {total_size_mb:.2f} MB از {AI_MAX_TOTAL_DB_SIZE_MB} MB
-📈 **درصد پر شدن:** {(total_size_mb/AI_MAX_TOTAL_DB_SIZE_MB)*100:.1f}%
-
-🎯 **آخرین گفتگوها:**"""
-                
-                # Show last 3 conversations
-                recent_convs = list(learning_collection.find(
-                    {'type': 'conversation'}, 
-                    sort=[('timestamp', -1)], 
-                    limit=3
-                ))
-                
-                for i, conv in enumerate(recent_convs, 1):
-                    timestamp = conv['timestamp'][:16].replace('T', ' ')
-                    sender_name = conv.get('sender_name', 'نامشخص')
-                    user_message = conv.get('user_message', '')[:30]
-                    status_text += f"\n{i}. {sender_name}: {user_message}..."
-                
-                if not recent_convs:
-                    status_text += "\nهنوز گفتگویی ذخیره نشده."
-                
-                await status_msg.edit_text(status_text)
-            except Exception as e:
-                logging.error(f"Learning status error: {e}", exc_info=True)
-                await message.edit_text(f"❌ خطا در نمایش وضعیت: {str(e)}")
-        elif command == "بکاپ یادگیری":
-            try:
-                if learning_collection is None:
-                    await message.edit_text("❌ MongoDB در دسترس نیست.")
-                    return
-                
-                status_msg = await message.edit_text("📦 در حال تهیه بکاپ از دیتابیس یادگیری...")
-                
-                # Get all learning data
-                all_data = {
-                    'conversations': [],
-                    'patterns': [],
-                    'response_patterns': [],
-                    'user_preferences': [],
-                    'backup_date': datetime.now(TEHRAN_TIMEZONE).isoformat(),
-                    'total_size_mb': await get_learning_db_size()
-                }
-                
-                # Fetch all documents with error handling
-                try:
-                    for doc in learning_collection.find({'type': 'conversation'}):
-                        doc.pop('_id', None)  # Remove MongoDB ID
-                        all_data['conversations'].append(doc)
-                    
-                    for doc in learning_collection.find({'type': 'pattern'}):
-                        doc.pop('_id', None)
-                        all_data['patterns'].append(doc)
-                    
-                    for doc in learning_collection.find({'type': 'response_pattern'}):
-                        doc.pop('_id', None)
-                        all_data['response_patterns'].append(doc)
-                    
-                    for doc in learning_collection.find({'type': 'user_preference'}):
-                        doc.pop('_id', None)
-                        all_data['user_preferences'].append(doc)
-                except Exception as fetch_error:
-                    logging.error(f"Error fetching backup data: {fetch_error}")
-                    await status_msg.edit_text(f"❌ خطا در دریافت داده‌ها: {str(fetch_error)}")
-                    return
-                
-                # Save to temporary JSON file
-                backup_filename = f"ai_learning_backup_{datetime.now(TEHRAN_TIMEZONE).strftime('%Y%m%d_%H%M%S')}.json"
-                backup_path = os.path.join(os.getcwd(), backup_filename)
-                
-                with open(backup_path, 'w', encoding='utf-8') as f:
-                    json.dump(all_data, f, ensure_ascii=False, indent=2)
-                
-                # Send file to user
-                await client.send_document(
-                    chat_id=message.chat.id,
-                    document=backup_path,
-                    caption=f"""📦 **بکاپ دیتابیس یادگیری**
-                    
-🗣️ گفتگوها: {len(all_data['conversations']):,}
-🧠 الگوهای کلمات: {len(all_data['patterns']):,}
-🔄 الگوهای پاسخ: {len(all_data['response_patterns']):,}
-👥 ترجیحات کاربران: {len(all_data['user_preferences']):,}
-💾 حجم کل: {all_data['total_size_mb']:.2f} MB
-📅 تاریخ بکاپ: {all_data['backup_date'][:16].replace('T', ' ')}"""
-                )
-                
-                # Delete temporary file
-                try:
-                    if os.path.exists(backup_path):
-                        os.remove(backup_path)
-                except:
-                    pass
-                    
-                try:
-                    await status_msg.delete()
-                except:
-                    pass
-                
-            except Exception as e:
-                logging.error(f"Backup error: {e}", exc_info=True)
-                await message.edit_text(f"❌ خطا در تهیه بکاپ: {str(e)}")
-        elif command == "پاکسازی یادگیری":
-            try:
-                if learning_collection is None:
-                    await message.edit_text("❌ MongoDB در دسترس نیست.")
-                    return
-                
-                status_msg = await message.edit_text("🔄 در حال بررسی و پاکسازی...")
-                
-                # Count documents before deletion
-                try:
-                    total_docs = learning_collection.count_documents({})
-                except Exception as count_error:
-                    logging.error(f"Count error: {count_error}")
-                    await status_msg.edit_text(f"❌ خطا در شمارش: {str(count_error)}")
-                    return
-                
-                if total_docs > 0:
-                    # Delete all learning data
-                    try:
-                        result = learning_collection.delete_many({})
-                        await status_msg.edit_text(f"🗑️ دیتابیس یادگیری پاک شد.\n📊 {result.deleted_count:,} سند حذف شد.")
-                    except Exception as delete_error:
-                        logging.error(f"Delete error: {delete_error}")
-                        await status_msg.edit_text(f"❌ خطا در حذف: {str(delete_error)}")
-                else:
-                    await status_msg.edit_text("📊 دیتابیس یادگیری خالی است.")
-            except Exception as e:
-                logging.error(f"Cleanup error: {e}", exc_info=True)
-                await message.edit_text(f"❌ خطا در پاکسازی: {str(e)}")
         elif command.endswith("خاموش"):
             feature = command[:-6].strip()
             status_changed = False
@@ -2129,15 +1921,14 @@ async def help_controller(client, message):
 **🔹 امنیت و منشی**
 • `پیوی قفل/باز`
 • `منشی روشن/خاموش` • `منشی متن [متن]`
-• `منشی خودکار روشن/خاموش` - منشی با هوش مصنوعی 🤖
+• `منشی خودکار روشن/خاموش` - منشی هوشمند با AI
 • `انتی لوگین روشن/خاموش`
 • `کپی روشن/خاموش` (ریپلای)
 
-**🔹 هوش مصنوعی (AI)**
-• `تست ai` - تست اتصال به هوش مصنوعی
-• `وضعیت یادگیری` - نمایش آمار دیتابیس یادگیری
-• `بکاپ یادگیری` - دریافت بکاپ از دیتابیس
-• `پاکسازی یادگیری` - پاک کردن دیتابیس یادگیری
+**🤖 هوش مصنوعی**
+• `تست ai` - تست عملکرد AI
+• `وضعیت یادگیری` - نمایش آمار یادگیری
+• `پاکسازی یادگیری` - حذف داده‌های یادگیری
 
 **🔹 ابزار**
 • `شماره من` • `دانلود` (ریپلای)
@@ -2814,6 +2605,10 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         USER_FONT_CHOICES.setdefault(user_id, font_style if font_style in FONT_STYLES else 'stylized')
         CLOCK_STATUS.setdefault(user_id, not disable_clock)
         SECRETARY_MODE_STATUS.setdefault(user_id, False)
+        AI_SECRETARY_STATUS.setdefault(user_id, False)
+        FIRST_COMMENT_STATUS.setdefault(user_id, False)
+        FIRST_COMMENT_TEXT.setdefault(user_id, "اول! 🔥")
+        FIRST_COMMENT_GROUPS.setdefault(user_id, set())
         # Load settings from DB if available (Example - needs implementation)
         # load_user_settings_from_db(user_id)
 
@@ -2874,7 +2669,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         cmd_filters = filters.me & filters.text
 
         client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=-10)
-        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex("^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش)$")))
+        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex(r"^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|آپلود عکس روشن|آپلود عکس خاموش|تماشا گیف روشن|تماشا گیف خاموش|پیوی قفل|پیوی باز)$"))
         client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
         client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$"))) # Translate command requires reply
         client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
@@ -3697,6 +3492,52 @@ async def toggle_controller(client, message):
         elif command == "منشی خاموش":
             SECRETARY_MODE_STATUS[user_id] = False
             await message.edit_text("❌ حالت منشی غیرفعال شد.")
+        elif command == "منشی خودکار روشن":
+            AI_SECRETARY_STATUS[user_id] = True
+            SECRETARY_MODE_STATUS[user_id] = False  # Disable regular secretary
+            await message.edit_text("✅ منشی خودکار فعال شد.\n🤖 پیام‌های PV به صورت خودکار با هوش مصنوعی پاسخ داده می‌شوند.")
+        elif command == "منشی خودکار خاموش":
+            AI_SECRETARY_STATUS[user_id] = False
+            await message.edit_text("❌ منشی خودکار غیرفعال شد.")
+        elif command == "تست ai":
+            try:
+                test_response = await get_ai_response("سلام", "تست", user_id, user_id)
+                await message.edit_text(f"✅ AI تست موفق: {test_response}")
+            except Exception as e:
+                await message.edit_text(f"❌ AI تست ناموفق: {str(e)}")
+        elif command == "وضعیت یادگیری":
+            try:
+                if learning_collection is None:
+                    await message.edit_text("❌ پایگاه داده یادگیری در دسترس نیست")
+                    return
+                
+                db_size = await get_learning_db_size()
+                total_conversations = learning_collection.count_documents({'type': 'conversation'})
+                total_patterns = learning_collection.count_documents({'type': 'pattern'})
+                total_users = len(learning_collection.distinct('sender_name', {'type': 'user_preference'}))
+                
+                status_text = f"🧠 **وضعیت یادگیری AI**\n\n"
+                status_text += f"📊 **حجم دیتابیس:** {db_size:.2f} MB / {AI_MAX_TOTAL_DB_SIZE_MB} MB\n"
+                status_text += f"💬 **گفتگوها:** {total_conversations}\n"
+                status_text += f"🧩 **الگوها:** {total_patterns}\n"
+                status_text += f"👥 **کاربران:** {total_users}"
+                
+                await message.edit_text(status_text)
+            except Exception as e:
+                logging.error(f"Learning status error: {e}")
+                await message.edit_text(f"❌ خطا در نمایش وضعیت: {str(e)}")
+        elif command == "پاکسازی یادگیری":
+            try:
+                if learning_collection is None:
+                    await message.edit_text("❌ پایگاه داده یادگیری در دسترس نیست")
+                    return
+                
+                # Clear all learning data
+                result = learning_collection.delete_many({})
+                await message.edit_text(f"✅ پاکسازی کامل: {result.deleted_count} رکورد حذف شد")
+            except Exception as e:
+                logging.error(f"Learning cleanup error: {e}")
+                await message.edit_text(f"❌ خطا در پاکسازی: {str(e)}")
         elif command == "انتی لوگین روشن":
             ANTI_LOGIN_STATUS[user_id] = True
             await message.edit_text("✅ انتی لوگین فعال شد.")
@@ -3992,10 +3833,37 @@ async def friend_handler(client, message):
         logging.error(f"Friend handler error: {e}")
 
 async def secretary_auto_reply_handler(client, message):
-    """Secretary auto reply handler"""
+    """Secretary auto reply handler - with AI support"""
     user_id = client.me.id
     try:
-        if SECRETARY_MODE_STATUS.get(user_id, False):
+        # Check if AI secretary is enabled
+        if AI_SECRETARY_STATUS.get(user_id, False):
+            sender_id = message.from_user.id if message.from_user else None
+            if sender_id:
+                try:
+                    # Get sender info
+                    sender_name = message.from_user.first_name or "کاربر"
+                    user_message = message.text or message.caption or "پیام"
+                    
+                    # Get AI response
+                    logging.info(f"AI Secretary: Getting response for message from {sender_name}")
+                    ai_response = await get_ai_response(user_message, sender_name, user_id, sender_id)
+                    
+                    # Reply with AI response
+                    await message.reply_text(ai_response)
+                    logging.info(f"AI Secretary: Replied to {sender_name}")
+                    
+                except Exception as ai_error:
+                    logging.error(f"AI Secretary error: {ai_error}")
+                    # Fallback to simple response
+                    try:
+                        sender_name = message.from_user.first_name or "دوست"
+                        await message.reply_text(f"سلام {sender_name}! من منشی امیر هستم. الان یکم مشکل فنی دارم، بعداً دوباره تماس بگیر!")
+                    except Exception as fallback_error:
+                        logging.error(f"AI Secretary fallback error: {fallback_error}")
+        
+        # Regular secretary mode (original)
+        elif SECRETARY_MODE_STATUS.get(user_id, False):
             sender_id = message.from_user.id if message.from_user else None
             if sender_id and sender_id not in USERS_REPLIED_IN_SECRETARY.get(user_id, set()):
                 # Add to replied users
@@ -4005,129 +3873,6 @@ async def secretary_auto_reply_handler(client, message):
                 await message.reply_text(secretary_msg)
     except Exception as e:
         logging.error(f"Secretary handler error: {e}")
-
-async def first_comment_handler(client, message):
-    """First comment handler"""
-    user_id = client.me.id
-    try:
-        if FIRST_COMMENT_STATUS.get(user_id, False):
-            chat_id = message.chat.id
-            groups = FIRST_COMMENT_GROUPS.get(user_id, set())
-            
-            if chat_id in groups:
-                comment_text = FIRST_COMMENT_TEXT.get(user_id, "اول! 🔥")
-                await asyncio.sleep(0.5)  # Small delay
-                await client.send_message(chat_id, comment_text)
-    except Exception as e:
-        logging.error(f"First comment handler error: {e}")
-
-async def clean_messages_controller(client, message):
-    """Clean messages"""
-    user_id = client.me.id
-    parts = message.text.strip().split()
-    if len(parts) != 2:
-        return
-    
-    try:
-        count = int(parts[1])
-        await message.delete()
-        
-        deleted = 0
-        try:
-            async for msg in client.get_chat_history(message.chat.id, limit=count):
-                if msg.from_user and msg.from_user.id == user_id:
-                    await msg.delete()
-                    deleted += 1
-                    await asyncio.sleep(0.1)
-        except Exception as e_clean_history:
-            logging.warning(f"Error getting chat history for clean: {e_clean_history}")
-        
-        confirm_msg = await client.send_message(message.chat.id, f'{deleted} پیام حذف شد')
-        await asyncio.sleep(3)
-        await confirm_msg.delete()
-    except Exception as e:
-        await message.edit_text(f"خطا در حذف پیام‌ها: {e}")
-
-async def comment_controller(client, message):
-    """Handle comment functionality"""
-    user_id = client.me.id
-    command = message.text.strip()
-    
-    if command == "کامنت روشن":
-        FIRST_COMMENT_STATUS[user_id] = True
-        await message.edit_text("✅ حالت کامنت اول فعال شد.")
-    elif command == "کامنت خاموش":
-        FIRST_COMMENT_STATUS[user_id] = False
-        await message.edit_text("❌ حالت کامنت اول غیرفعال شد.")
-    elif command == "تنظیم گروه کامنت":
-        # Add current group to comment groups list
-        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            await message.edit_text("⚠️ این دستور فقط در گروه‌ها کار می‌کند.")
-            return
-        
-        chat_id = message.chat.id
-        groups = FIRST_COMMENT_GROUPS.setdefault(user_id, set())
-        
-        if chat_id not in groups:
-            groups.add(chat_id)
-            await message.edit_text("✅ گروه به لیست کامنت اضافه شد")
-            logging.info(f"Group {chat_id} added to comment list for user {user_id}")
-        else:
-            await message.edit_text("ℹ️ این گروه از قبل در لیست است.")
-    
-    elif command == "حذف گروه کامنت":
-        # Remove current group from comment groups list
-        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            await message.edit_text("⚠️ این دستور فقط در گروه‌ها کار می‌کند.")
-            return
-        
-        chat_id = message.chat.id
-        groups = FIRST_COMMENT_GROUPS.get(user_id, set())
-        
-        if chat_id in groups:
-            groups.remove(chat_id)
-            await message.edit_text("✅ گروه از لیست کامنت حذف شد")
-            logging.info(f"Group {chat_id} removed from comment list for user {user_id}")
-        else:
-            await message.edit_text("ℹ️ این گروه در لیست نیست.")
-    
-    elif command == "لیست گروه کامنت":
-        # Show list of comment groups
-        groups = FIRST_COMMENT_GROUPS.get(user_id, set())
-        
-        if not groups:
-            await message.edit_text("ℹ️ لیست گروه‌های کامنت خالی است.")
-            return
-        
-        # Get group names
-        list_items = []
-        for chat_id in groups:
-            try:
-                chat = await client.get_chat(chat_id)
-                list_items.append(f"- {chat.title} (`{chat_id}`)")
-            except Exception:
-                list_items.append(f"- گروه (`{chat_id}`)")
-        
-        list_text = "**📋 لیست گروه‌های کامنت:**\n" + "\n".join(list_items)
-        if len(list_text) > 4096:
-            list_text = list_text[:4090] + "\n[...]"
-        await message.edit_text(list_text)
-    
-    elif command == "حذف لیست گروه کامنت":
-        # Clear all comment groups
-        if user_id in FIRST_COMMENT_GROUPS:
-            FIRST_COMMENT_GROUPS[user_id] = set()
-            await message.edit_text("✅ لیست گروه‌های کامنت پاک شد.")
-        else:
-            await message.edit_text("ℹ️ لیست گروه‌های کامنت از قبل خالی بود.")
-    
-    elif command.startswith("کامنت "):
-        text = command[6:].strip()  # Remove "کامنت " prefix
-        if text:
-            FIRST_COMMENT_TEXT[user_id] = text
-            await message.edit_text(f"✅ متن کامنت اول تنظیم شد: `{text}`")
-        else:
-            await message.edit_text("⚠️ متن کامنت نمی‌تواند خالی باشد.")
 
 async def first_comment_handler(client, message):
     """Handle first comment on channel posts - only in registered groups"""
@@ -4177,6 +3922,33 @@ async def first_comment_handler(client, message):
         logging.info(f"✅ First comment sent by user {user_id} in group {chat_id}: {comment_text}")
     except Exception as e:
         logging.error(f"❌ Error sending first comment in group {chat_id}: {e}")
+
+async def clean_messages_controller(client, message):
+    """Clean messages"""
+    user_id = client.me.id
+    parts = message.text.strip().split()
+    if len(parts) != 2:
+        return
+    
+    try:
+        count = int(parts[1])
+        await message.delete()
+        
+        deleted = 0
+        try:
+            async for msg in client.get_chat_history(message.chat.id, limit=count):
+                if msg.from_user and msg.from_user.id == user_id:
+                    await msg.delete()
+                    deleted += 1
+                    await asyncio.sleep(0.1)
+        except Exception as e_clean_history:
+            logging.warning(f"Error getting chat history for clean: {e_clean_history}")
+        
+        confirm_msg = await client.send_message(message.chat.id, f'{deleted} پیام حذف شد')
+        await asyncio.sleep(3)
+        await confirm_msg.delete()
+    except Exception as e:
+        await message.edit_text(f"خطا در حذف پیام‌ها: {e}")
 
 # --- Web Section (Flask) ---
 HTML_TEMPLATE = """
