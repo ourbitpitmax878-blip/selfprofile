@@ -1125,27 +1125,6 @@ async def friend_handler(client, message):
     except Exception as e:
         logging.warning(f"Friend Handler: Could not reply to message {message.id} for user {user_id}: {e}")
 
-async def secretary_auto_reply_handler(client, message):
-    owner_user_id = client.me.id
-    if (message.chat.type == ChatType.PRIVATE and
-            message.from_user and not message.from_user.is_self and
-            not message.from_user.is_bot and
-            SECRETARY_MODE_STATUS.get(owner_user_id, False)):
-
-        target_user_id = message.from_user.id
-        replied_users_today = USERS_REPLIED_IN_SECRETARY.setdefault(owner_user_id, set())
-
-        if target_user_id not in replied_users_today:
-            reply_message_text = CUSTOM_SECRETARY_MESSAGES.get(owner_user_id, DEFAULT_SECRETARY_MESSAGE)
-            try:
-                await message.reply_text(reply_message_text, quote=True)
-                replied_users_today.add(target_user_id)
-            except FloodWait as e:
-                 logging.warning(f"Secretary Handler: Flood wait replying for user {owner_user_id}: {e.value}s")
-                 await asyncio.sleep(e.value + 1)
-            except Exception as e:
-                logging.warning(f"Secretary Handler: Could not auto-reply to user {target_user_id} for owner {owner_user_id}: {e}")
-
 async def pv_lock_handler(client, message):
     owner_user_id = client.me.id
     if PV_LOCK_STATUS.get(owner_user_id, False):
@@ -1522,8 +1501,18 @@ async def copy_profile_controller(client, message):
                      # Try deleting again if setting failed? Might be redundant.
             # else: no original photo to restore
 
+            # Restore clock and bio settings
+            if 'clock_in_bio' in original:
+                CLOCK_IN_BIO_STATUS[user_id] = original.get('clock_in_bio', False)
+            if 'date_in_bio' in original:
+                DATE_IN_BIO_STATUS[user_id] = original.get('date_in_bio', False)
+            if 'clock_font' in original:
+                BIO_CLOCK_FONT_CHOICE[user_id] = original.get('clock_font', 1)
+            if 'date_type' in original:
+                DATE_TYPE_CHOICE[user_id] = original.get('date_type', 'میلادی')
+
             COPY_MODE_STATUS[user_id] = False # Set status after successful operations
-            await message.edit_text("✅ پروفایل با موفقیت به حالت اصلی بازگردانده شد.")
+            await message.edit_text("✅ پروفایل با موفقیت به حالت اصلی بازگردانده شد (شامل تنظیمات ساعت و تاریخ بیو).")
             return
 
         # Logic for "کپی روشن" (requires_reply was checked earlier)
@@ -1551,12 +1540,16 @@ async def copy_profile_controller(client, message):
                 except Exception as e_download_me:
                      logging.warning(f"Copy Profile (Backup): Could not download own photo for user {user_id}: {e_download_me}")
 
-            # Store backup
+            # Store backup including clock/bio settings
             ORIGINAL_PROFILE_DATA[user_id] = {
                 'first_name': me.first_name or '',
                 'last_name': me.last_name or '',
                 'bio': me_bio,
-                'photo': me_photo_bytes # Store bytes or None
+                'photo': me_photo_bytes, # Store bytes or None
+                'clock_in_bio': CLOCK_IN_BIO_STATUS.get(user_id, False),
+                'date_in_bio': DATE_IN_BIO_STATUS.get(user_id, False),
+                'clock_font': BIO_CLOCK_FONT_CHOICE.get(user_id, 1),
+                'date_type': DATE_TYPE_CHOICE.get(user_id, 'میلادی')
             }
 
             # --- Get Target Profile Info ---
@@ -3730,44 +3723,55 @@ async def friend_handler(client, message):
         logging.error(f"Friend handler error: {e}")
 
 async def secretary_auto_reply_handler(client, message):
-    """Secretary auto reply handler - with AI support"""
+    """Secretary auto reply handler - AI replies to ALL messages naturally, regular replies once"""
     user_id = client.me.id
+    
+    # Only handle private messages
+    if message.chat.type != ChatType.PRIVATE:
+        return
+    
+    # Skip if from self or bot
+    if not message.from_user or message.from_user.is_self or message.from_user.is_bot:
+        return
+    
+    # Check if any secretary mode is enabled
+    if not AI_SECRETARY_STATUS.get(user_id, False) and not SECRETARY_MODE_STATUS.get(user_id, False):
+        return
+    
+    sender_id = message.from_user.id
+    sender_name = message.from_user.first_name or "دوست"
+    user_message = message.text or message.caption or ""
+    
     try:
-        # Check if AI secretary is enabled
+        # AI Secretary Mode - reply to EVERY message like a real person
         if AI_SECRETARY_STATUS.get(user_id, False):
-            sender_id = message.from_user.id if message.from_user else None
-            if sender_id:
-                try:
-                    # Get sender info
-                    sender_name = message.from_user.first_name or "کاربر"
-                    user_message = message.text or message.caption or "پیام"
-                    
-                    # Get AI response
-                    logging.info(f"AI Secretary: Getting response for message from {sender_name}")
-                    ai_response = await get_ai_response(user_message, sender_name, user_id, sender_id)
-                    
-                    # Reply with AI response
-                    await message.reply_text(ai_response)
-                    logging.info(f"AI Secretary: Replied to {sender_name}")
-                    
-                except Exception as ai_error:
-                    logging.error(f"AI Secretary error: {ai_error}")
-                    # Fallback to simple response
-                    try:
-                        sender_name = message.from_user.first_name or "دوست"
-                        await message.reply_text(f"سلام {sender_name}! من منشی امیر هستم. الان یکم مشکل فنی دارم، بعداً دوباره تماس بگیر!")
-                    except Exception as fallback_error:
-                        logging.error(f"AI Secretary fallback error: {fallback_error}")
+            try:
+                # Get AI response - will use MongoDB to remember past conversations
+                logging.info(f"AI Secretary: Getting natural response for {sender_name}")
+                ai_response = await get_ai_response(user_message, sender_name, user_id, sender_id)
+                
+                # Reply naturally using AI and MongoDB learning
+                await message.reply_text(ai_response)
+                logging.info(f"AI Secretary: Replied naturally to {sender_name}")
+                
+            except Exception as ai_error:
+                logging.error(f"AI Secretary error: {ai_error}")
+                # Fallback only if AI completely fails
+                await message.reply_text(f"سلام {sender_name}! الان یکم مشغولم، بعداً پیام بده 😊")
         
-        # Regular secretary mode (original)
+        # Regular Secretary Mode - reply ONCE only
         elif SECRETARY_MODE_STATUS.get(user_id, False):
-            sender_id = message.from_user.id if message.from_user else None
-            if sender_id and sender_id not in USERS_REPLIED_IN_SECRETARY.get(user_id, set()):
-                # Add to replied users
-                USERS_REPLIED_IN_SECRETARY.setdefault(user_id, set()).add(sender_id)
-                # Send secretary message
-                secretary_msg = CUSTOM_SECRETARY_MESSAGES.get(user_id, DEFAULT_SECRETARY_MESSAGE)
-                await message.reply_text(secretary_msg)
+            replied_users = USERS_REPLIED_IN_SECRETARY.setdefault(user_id, set())
+            
+            # If already replied, skip
+            if sender_id in replied_users:
+                return
+            
+            # Mark as replied and send message
+            replied_users.add(sender_id)
+            secretary_msg = CUSTOM_SECRETARY_MESSAGES.get(user_id, DEFAULT_SECRETARY_MESSAGE)
+            await message.reply_text(secretary_msg)
+                
     except Exception as e:
         logging.error(f"Secretary handler error: {e}")
 
