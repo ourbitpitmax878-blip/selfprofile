@@ -190,6 +190,19 @@ FIRST_COMMENT_TEXT = {}    # {user_id: str} - text for first comment
 FIRST_COMMENT_GROUPS = {}  # {user_id: set of chat_ids} - groups for first comment
 FIRST_COMMENT_COOLDOWN = {}  # {user_id: {chat_id: last_comment_time}} - prevent spam
 
+# --- Auto Repeat Variables ---
+AUTO_REPEAT_STATUS = {}  # {user_id: {chat_id: {'active': bool, 'interval': int, 'message': Message, 'task': asyncio.Task}}}
+
+# --- Auto Save Variables ---
+AUTO_SAVE_VIEW_ONCE = {}  # {user_id: bool}
+
+# --- Text Edit Mode Variables ---
+TEXT_EDIT_MODES = {}  # {user_id: {'bold': 'on/off', 'italic': 'on/off', ...}}
+
+# --- Crash List Variables ---
+CRASH_LIST = {}  # {user_id: set of user_ids}
+CRASH_REPLIES = {}  # {user_id: list of replies}
+
 # --- AI Learning Database Functions ---
 async def save_conversation_to_learning_db(user_id: int, sender_id: int, user_message: str, ai_response: str, sender_name: str):
     """Save conversation to MongoDB learning database with total size limit"""
@@ -1233,32 +1246,6 @@ async def auto_seen_handler(client, message):
              if "Could not find the input peer" not in str(e) and "PEER_ID_INVALID" not in str(e).upper():
                  logging.warning(f"AutoSeen: Could not mark chat {getattr(message.chat, 'id', 'N/A')} as read: {e}")
 
-async def translate_controller(client, message):
-    user_id = client.me.id
-    # Add checks for message attributes existence
-    if (message.reply_to_message and
-        hasattr(message.reply_to_message, 'text') and message.reply_to_message.text and
-        hasattr(message.reply_to_message, 'from_user') and message.reply_to_message.from_user and
-        not message.reply_to_message.from_user.is_self):
-        text = message.reply_to_message.text
-        translated = await translate_text(text, "fa")  # Auto detect source, to Persian
-        try:
-            await message.edit_text(translated)
-        except Exception as e:
-            # Fallback to reply if edit fails
-            try:
-                await message.reply_text(translated, quote=True) # Quote the original for context
-                await message.delete() # Delete the "ترجمه" command message
-            except Exception as e_reply:
-                logging.warning(f"Translate: Failed to edit or reply: {e} / {e_reply}")
-    else:
-        try:
-            await message.edit_text("⚠️ برای ترجمه، روی متن کاربر دیگر ریپلای کنید.")
-        except MessageNotModified:
-            pass
-        except Exception as e_edit_warn:
-             logging.warning(f"Translate: Failed to edit warning message: {e_edit_warn}")
-
 async def toggle_controller(client, message):
     user_id = client.me.id
     command = message.text.strip()
@@ -1337,74 +1324,6 @@ async def toggle_controller(client, message):
         try:
             await message.edit_text("⚠️ خطایی در پردازش دستور رخ داد.")
         except Exception: # Avoid further errors if editing fails
-            pass
-
-async def set_translation_controller(client, message):
-    user_id = client.me.id
-    command = message.text.strip().lower()
-    try:
-        lang_map = {
-            "چینی روشن": "zh",
-            "روسی روشن": "ru",
-            "انگلیسی روشن": "en"
-        }
-        off_map = {
-            "چینی خاموش": "zh",
-            "روسی خاموش": "ru",
-            "انگلیسی خاموش": "en"
-        }
-        current_lang = AUTO_TRANSLATE_TARGET.get(user_id)
-        new_lang = None
-        feedback_msg = None
-
-        if command in lang_map:
-            lang = lang_map[command]
-            if current_lang != lang:
-                AUTO_TRANSLATE_TARGET[user_id] = lang
-                feedback_msg = f"✅ ترجمه خودکار به زبان {lang} فعال شد."
-            else:
-                feedback_msg = f"ℹ️ ترجمه خودکار به زبان {lang} از قبل فعال بود."
-        elif command in off_map:
-            lang_to_check = off_map[command]
-            if current_lang == lang_to_check:
-                AUTO_TRANSLATE_TARGET.pop(user_id, None)
-                feedback_msg = f"✅ ترجمه خودکار به زبان {lang_to_check} غیرفعال شد."
-            else:
-                feedback_msg = f"ℹ️ ترجمه خودکار به زبان {lang_to_check} فعال نبود."
-        elif command == "ترجمه خاموش":
-            if current_lang is not None:
-                AUTO_TRANSLATE_TARGET.pop(user_id, None)
-                feedback_msg = "✅ ترجمه خودکار غیرفعال شد."
-            else:
-                feedback_msg = "ℹ️ ترجمه خودکار از قبل غیرفعال بود."
-        else:
-            match = re.match(r"ترجمه ([a-z]{2}(?:-[a-z]{2})?)", command)
-            if match:
-                lang = match.group(1)
-                # Basic check if lang code format seems valid (2 letters, optional hyphen and 2 more)
-                if len(lang) >= 2:
-                    if current_lang != lang:
-                        AUTO_TRANSLATE_TARGET[user_id] = lang
-                        feedback_msg = f"✅ ترجمه خودکار به زبان {lang} فعال شد."
-                    else:
-                        feedback_msg = f"ℹ️ ترجمه خودکار به زبان {lang} از قبل فعال بود."
-                else:
-                     feedback_msg = "⚠️ کد زبان نامعتبر. مثال: en یا zh-CN"
-            else:
-                 feedback_msg = "⚠️ فرمت دستور نامعتبر. مثال: ترجمه en یا ترجمه خاموش"
-
-        if feedback_msg:
-             await message.edit_text(feedback_msg)
-
-    except FloodWait as e:
-        await asyncio.sleep(e.value + 1)
-    except MessageNotModified:
-        pass
-    except Exception as e:
-        logging.error(f"Set Translation: Error processing command '{command}' for user {user_id}: {e}", exc_info=True)
-        try:
-            await message.edit_text("⚠️ خطایی در تنظیم ترجمه رخ داد.")
-        except Exception:
             pass
 
 async def set_secretary_message_controller(client, message):
@@ -1860,8 +1779,8 @@ async def help_controller(client, message):
 ⚠️ **توجه:** فقط یک حالت می‌تواند فعال باشد
 
 **🔹 ترجمه**
-• `ترجمه` (ریپلای) • `ترجمه [کد]` • `ترجمه خاموش`
-• `چینی/روسی/انگلیسی روشن/خاموش`
+• `ترجمه` (ریپلای) - ترجمه به فارسی با تشخیص زبان خودکار
+⚠️ **نیاز:** `pip install googletrans==4.0.0-rc1`
 
 **🔹 ساعت و فونت**
 • `ساعت روشن/خاموش` • `فونت` • `فونت [عدد]`
@@ -1871,10 +1790,12 @@ async def help_controller(client, message):
 • `فونت ساعت بیو` • `فونت ساعت بیو [عدد]`
 
 **🔹 مدیریت پیام**
-• `حذف [عدد]` یا `clean [عدد]` - حذف پیام‌های خودت
-• `حذف همه` - حذف تمام پیام‌ها
-• `ذخیره روشن/خاموش` - ذخیره خودکار عکس‌های تایم‌دار
+• `حذف [عدد]` - حذف تعداد مشخص پیام (سریع و بهینه)
+• `حذف همه` - حذف تمام پیام‌ها (batch delete)
+• `ذخیره روشن/خاموش` - ذخیره خودکار عکس‌های تایم‌دار (view once)
 • `تکرار [عدد] [ثانیه]` (ریپلای) - تکرار پیام
+• `تکرار خودکار [ثانیه]` (ریپلای) - تکرار مداوم 🔄
+• `تکرار خودکار خاموش` - متوقف کردن تکرار مداوم ⏸
 • `بلاک روشن/خاموش` (ریپلای) - بلاک کردن
 • `سکوت روشن/خاموش` (ریپلای) - میوت کردن
 • `ریاکشن [ایموجی]` (ریپلای) - ریاکشن خودکار
@@ -2182,15 +2103,122 @@ async def auto_save_view_once_handler(client, message):
     except Exception as e:
         logging.error(f"Auto save view once handler error: {e}", exc_info=True)
 
+async def auto_repeat_task(client, user_id, chat_id, message_to_repeat, interval):
+    """Background task for auto-repeating messages"""
+    try:
+        while True:
+            # Check if auto-repeat is still active
+            if user_id not in AUTO_REPEAT_STATUS:
+                break
+            if chat_id not in AUTO_REPEAT_STATUS[user_id]:
+                break
+            if not AUTO_REPEAT_STATUS[user_id][chat_id].get('active', False):
+                break
+            
+            # Send the message
+            try:
+                await message_to_repeat.copy(chat_id)
+            except Exception as send_error:
+                logging.error(f"Auto-repeat send error: {send_error}")
+            
+            # Wait for interval
+            await asyncio.sleep(interval)
+            
+    except asyncio.CancelledError:
+        logging.info(f"Auto-repeat task cancelled for chat {chat_id}")
+    except Exception as e:
+        logging.error(f"Auto-repeat task error: {e}")
+
 async def repeat_message_controller(client, message):
     user_id = client.me.id
+    command = message.text.strip()
+    
+    # تکرار خودکار [ثانیه]
+    match_auto = re.match(r"^تکرار خودکار (\d+)$", command)
+    if match_auto:
+        if not message.reply_to_message:
+            await message.edit_text("⚠️ روی پیامی که می‌خواهید تکرار شود ریپلای کنید")
+            return
+        
+        interval = int(match_auto.group(1))
+        if interval < 1 or interval > 300:
+            await message.edit_text("⚠️ زمان تکرار باید بین 1 تا 300 ثانیه باشد")
+            return
+        
+        chat_id = message.chat.id
+        replied_msg = message.reply_to_message
+        
+        # Initialize dict if needed
+        if user_id not in AUTO_REPEAT_STATUS:
+            AUTO_REPEAT_STATUS[user_id] = {}
+        
+        # Stop existing task if any
+        if chat_id in AUTO_REPEAT_STATUS[user_id]:
+            old_task = AUTO_REPEAT_STATUS[user_id][chat_id].get('task')
+            if old_task and not old_task.done():
+                old_task.cancel()
+        
+        # Delete command message
+        try:
+            await message.delete()
+        except:
+            pass
+        
+        # Start new auto-repeat task
+        task = asyncio.create_task(auto_repeat_task(client, user_id, chat_id, replied_msg, interval))
+        
+        AUTO_REPEAT_STATUS[user_id][chat_id] = {
+            'active': True,
+            'interval': interval,
+            'message': replied_msg,
+            'task': task
+        }
+        
+        # Send confirmation
+        confirm = await client.send_message(chat_id, f"✅ تکرار خودکار هر {interval} ثانیه فعال شد")
+        await asyncio.sleep(3)
+        try:
+            await confirm.delete()
+        except:
+            pass
+        return
+    
+    # تکرار خودکار خاموش
+    if command == "تکرار خودکار خاموش":
+        chat_id = message.chat.id
+        
+        if user_id in AUTO_REPEAT_STATUS and chat_id in AUTO_REPEAT_STATUS[user_id]:
+            # Cancel task
+            task = AUTO_REPEAT_STATUS[user_id][chat_id].get('task')
+            if task and not task.done():
+                task.cancel()
+            
+            # Remove from dict
+            del AUTO_REPEAT_STATUS[user_id][chat_id]
+            
+            await message.edit_text("❌ تکرار خودکار غیرفعال شد")
+            await asyncio.sleep(2)
+            try:
+                await message.delete()
+            except:
+                pass
+        else:
+            await message.edit_text("ℹ️ تکرار خودکار فعال نبود")
+            await asyncio.sleep(2)
+            try:
+                await message.delete()
+            except:
+                pass
+        return
+    
+    # تکرار [تعداد] [زمان]
     if not message.reply_to_message:
         try:
             await message.edit_text("⚠️ برای استفاده از دستور تکرار، باید روی پیام مورد نظر ریپلای کنید.")
         except Exception: pass
         return
 
-    match = re.match(r"^تکرار (\d+)(?: (\d+))?$", message.text) # Make second group optional non-capturing
+    match = re.match(r"^تکرار (\d+)(?: (\d+))?$", command) # Make second group optional non-capturing
     if match:
         try:
             count = int(match.group(1))
@@ -2670,7 +2698,6 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
 
         client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=-10)
         client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex(r"^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|آپلود عکس روشن|آپلود عکس خاموش|تماشا گیف روشن|تماشا گیف خاموش|پیوی قفل|پیوی باز)$")))
-        client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
         client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$"))) # Translate command requires reply
         client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
         client.add_handler(MessageHandler(pv_lock_controller, cmd_filters & filters.regex("^(پیوی قفل|پیوی باز)$")))
@@ -2696,7 +2723,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         # Copy profile handler needs careful filter: allow reply only for 'copy روشن'
         client.add_handler(MessageHandler(copy_profile_controller, cmd_filters & filters.regex("^(کپی روشن|کپی خاموش)$"))) # Logic inside handles reply check
         client.add_handler(MessageHandler(auto_save_toggle_controller, cmd_filters & filters.regex("^(ذخیره روشن|ذخیره خاموش)$")))
-        client.add_handler(MessageHandler(repeat_message_controller, cmd_filters & filters.reply & filters.regex(r"^تکرار \d+(?: \d+)?$"))) # Requires reply
+        client.add_handler(MessageHandler(repeat_message_controller, cmd_filters & filters.regex(r"^(تکرار \d+(?: \d+)?|تکرار خودکار \d+|تکرار خودکار خاموش)$"))) # Auto-repeat commands
         client.add_handler(MessageHandler(delete_messages_controller, cmd_filters & filters.regex(r"^(حذف(?: \d+)?|حذف همه)$")))
         client.add_handler(MessageHandler(ping_controller, cmd_filters & filters.regex("^(ping|پینگ)$")))
         
@@ -3607,80 +3634,6 @@ async def auto_save_toggle_controller(client, message):
         logging.error(f"Auto save toggle error: {e}")
         await message.edit_text("⚠️ خطا در تنظیم ذخیره خودکار")
 
-async def repeat_message_controller(client, message):
-    """Repeat message controller"""
-    try:
-        if not message.reply_to_message:
-            await message.edit_text("⚠️ روی پیام مورد نظر ریپلای کنید")
-            return
-            
-        # Parse command: تکرار [count] [delay]
-        parts = message.text.strip().split()
-        if len(parts) < 2:
-            await message.edit_text("⚠️ فرمت: `تکرار [تعداد] [ثانیه]`")
-            return
-            
-        count = int(parts[1])
-        delay = int(parts[2]) if len(parts) > 2 else 1
-        
-        if count > 50:
-            await message.edit_text("⚠️ حداکثر 50 تکرار مجاز است")
-            return
-            
-        reply_text = message.reply_to_message.text or "پیام بدون متن"
-        await message.delete()
-        
-        for i in range(count):
-            await client.send_message(message.chat.id, f"{reply_text} ({i+1})")
-            if i < count - 1:  # Don't sleep after last message
-                await asyncio.sleep(delay)
-                
-    except ValueError:
-        await message.edit_text("⚠️ تعداد و ثانیه باید عدد باشند")
-    except Exception as e:
-        logging.error(f"Repeat message error: {e}")
-        await message.edit_text("⚠️ خطا در تکرار پیام")
-
-async def delete_messages_controller(client, message):
-    """Delete messages controller"""
-    user_id = client.me.id
-    command = message.text.strip()
-    
-    try:
-        if command == "حذف همه":
-            await message.edit_text("⚠️ در حال حذف تمام پیام‌های شما...")
-            deleted = 0
-            async for msg in client.get_chat_history(message.chat.id):
-                if msg.from_user and msg.from_user.id == user_id:
-                    await msg.delete()
-                    deleted += 1
-                    await asyncio.sleep(0.1)
-            await client.send_message(message.chat.id, f"✅ {deleted} پیام حذف شد")
-        else:
-            # Parse number: حذف [number]
-            match = re.match(r"^حذف(?: (\d+))?$", command)
-            if match:
-                count = int(match.group(1)) if match.group(1) else 1
-                if count > 100:
-                    await message.edit_text("⚠️ حداکثر 100 پیام")
-                    return
-                    
-                await message.delete()
-                deleted = 0
-                async for msg in client.get_chat_history(message.chat.id, limit=count):
-                    if msg.from_user and msg.from_user.id == user_id:
-                        await msg.delete()
-                        deleted += 1
-                        await asyncio.sleep(0.1)
-                        
-                confirm_msg = await client.send_message(message.chat.id, f"✅ {deleted} پیام حذف شد")
-                await asyncio.sleep(3)
-                await confirm_msg.delete()
-                
-    except Exception as e:
-        logging.error(f"Delete messages error: {e}")
-        await message.edit_text("⚠️ خطا در حذف پیام‌ها")
-
 async def ping_controller(client, message):
     """Ping controller"""
     try:
@@ -3692,59 +3645,49 @@ async def ping_controller(client, message):
     except Exception as e:
         logging.error(f"Ping error: {e}")
 
-async def set_translation_controller(client, message):
-    """Set translation controller"""
-    user_id = client.me.id
-    command = message.text.strip()
-    
-    try:
-        if command == "ترجمه خاموش":
-            AUTO_TRANSLATE_TARGET[user_id] = None
-            await message.edit_text("❌ ترجمه خودکار غیرفعال شد")
-        elif command == "چینی روشن":
-            AUTO_TRANSLATE_TARGET[user_id] = "zh"
-            await message.edit_text("✅ ترجمه خودکار به چینی فعال شد")
-        elif command == "چینی خاموش":
-            AUTO_TRANSLATE_TARGET[user_id] = None
-            await message.edit_text("❌ ترجمه خودکار به چینی غیرفعال شد")
-        elif command == "روسی روشن":
-            AUTO_TRANSLATE_TARGET[user_id] = "ru"
-            await message.edit_text("✅ ترجمه خودکار به روسی فعال شد")
-        elif command == "روسی خاموش":
-            AUTO_TRANSLATE_TARGET[user_id] = None
-            await message.edit_text("❌ ترجمه خودکار به روسی غیرفعال شد")
-        elif command == "انگلیسی روشن":
-            AUTO_TRANSLATE_TARGET[user_id] = "en"
-            await message.edit_text("✅ ترجمه خودکار به انگلیسی فعال شد")
-        elif command == "انگلیسی خاموش":
-            AUTO_TRANSLATE_TARGET[user_id] = None
-            await message.edit_text("❌ ترجمه خودکار به انگلیسی غیرفعال شد")
-        else:
-            # Parse language code: ترجمه [lang]
-            match = re.match(r"^ترجمه ([a-z]{2}(?:-[a-z]{2})?)$", command)
-            if match:
-                lang_code = match.group(1)
-                AUTO_TRANSLATE_TARGET[user_id] = lang_code
-                await message.edit_text(f"✅ ترجمه خودکار به `{lang_code}` فعال شد")
-                
-    except Exception as e:
-        logging.error(f"Set translation error: {e}")
-        await message.edit_text("⚠️ خطا در تنظیم ترجمه")
-
 async def translate_controller(client, message):
-    """Translate controller"""
+    """Translate replied message using googletrans library"""
     try:
-        if not message.reply_to_message or not message.reply_to_message.text:
-            await message.edit_text("⚠️ روی پیام متنی ریپلای کنید")
+        if not message.reply_to_message:
+            await message.edit_text("⚠️ روی پیامی که می‌خواهید ترجمه کنید ریپلای کنید")
             return
-            
-        text_to_translate = message.reply_to_message.text
-        # Simple translation placeholder
-        await message.edit_text(f"🔄 **ترجمه:**\n{text_to_translate}\n\n*نوت: سرویس ترجمه فعلاً در دسترس نیست*")
         
+        # Get text from replied message
+        text_to_translate = message.reply_to_message.text or message.reply_to_message.caption
+        if not text_to_translate:
+            await message.edit_text("⚠️ پیام ریپلای شده متن ندارد")
+            return
+        
+        status_msg = await message.edit_text("🔄 در حال ترجمه...")
+        
+        try:
+            from googletrans import Translator
+            translator = Translator()
+            
+            # Detect language and translate to Persian (fa)
+            result = translator.translate(text_to_translate, dest='fa')
+            
+            translated_text = f"""🌐 **ترجمه:**
+
+📝 **متن اصلی ({result.src}):**
+{text_to_translate}
+
+✅ **ترجمه شده:**
+{result.text}"""
+            
+            await status_msg.edit_text(translated_text)
+            
+        except ImportError:
+            await status_msg.edit_text("❌ کتابخانه googletrans نصب نیست.\nبا دستور زیر نصب کنید:\n`pip install googletrans==4.0.0-rc1`")
+        except Exception as trans_error:
+            await status_msg.edit_text(f"❌ خطا در ترجمه: {str(trans_error)}")
+            
     except Exception as e:
-        logging.error(f"Translate error: {e}")
-        await message.edit_text("⚠️ خطا در ترجمه")
+        logging.error(f"Translate controller error: {e}")
+        try:
+            await message.edit_text("⚠️ خطا در ترجمه")
+        except:
+            pass
 
 # --- Missing Handler Functions for Auto-replies and Features ---
 
@@ -3794,21 +3737,6 @@ async def pv_lock_handler(client, message):
             await message.delete()
     except Exception as e:
         logging.error(f"PV lock handler error: {e}")
-
-async def auto_save_view_once_handler(client, message):
-    """Auto save view once media handler"""
-    user_id = client.me.id
-    try:
-        if AUTO_SAVE_VIEW_ONCE.get(user_id, False) and message.media:
-            # Check if it's a view once media
-            if hasattr(message, 'ttl_seconds') and message.ttl_seconds:
-                file_path = await message.download()
-                if file_path:
-                    await client.send_document("me", file_path, caption="Auto-saved view once media")
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-    except Exception as e:
-        logging.error(f"Auto save view once error: {e}")
 
 async def enemy_handler(client, message):
     """Enemy auto reply handler"""
