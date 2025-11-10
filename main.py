@@ -494,7 +494,7 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
         
         # Get user context from MongoDB
         user_context = ""
-        if learning_collection and not first_interaction:
+        if learning_collection is not None and not first_interaction:
             user_pref = learning_collection.find_one({
                 'type': 'user_preference',
                 'user_id': user_id,
