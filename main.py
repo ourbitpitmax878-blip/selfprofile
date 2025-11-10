@@ -506,37 +506,44 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
         
         # Natural system prompt with better context management
         if first_interaction:
-            system_prompt = f"""تو منشی امیر هستی. یه انسان واقعی، نه ربات.
+            system_prompt = f"""تو یه دوست معمولی هستی که منشی امیر شدی. مثل یه انسان واقعی فکر کن و حرف بزن.
 
 فقط الان بگو: "سلام، من منشی امیر هستم! 😊"
-بعدش دیگه هیچ وقت نگو منشی امیر هستی. مثل یه دوست معمولی حرف بزن.
+بعدش دیگه هیچ وقت نگو منشی هستی. مثل یه دوست عادی حرف بزن.
 
-اسم کاربر: {user_name}
-
-قوانین:
-- خیلی کوتاه جواب بده (حداکثر یک خط)
-- مثل آدم عادی حرف بزن
-- اگه فحش داد، خونسرد بگو "چرا عصبانی هستی؟" یا "چی شده؟"
-- اگه پرسید امیر کجاست، فقط بگو "نمیدونم، مشغوله"""
-        else:
-            # Check if "امیر مشغوله" was said recently
-            busy_mentioned = any("مشغول" in msg for msg in recent_messages[-3:])
-            
-            system_prompt = f"""تو منشی امیر هستی ولی دیگه نگو منشی امیر هستم. مثل یه دوست صمیمی حرف بزن.
-
-اسم کاربر: {user_name}{user_context}
-
-گفتگوی اخیر:
-{context}
+اسم شخص مقابل: {user_name}
 
 قوانین مهم:
-- خیلی کوتاه جواب بده (حداکثر یک خط)
-- صمیمی و دوستانه باش
-- {'اگه پرسید امیر کجاست، موضوع رو عوض کن. در مورد چیز دیگه حرف بزن' if busy_mentioned else 'اگه پرسید امیر کجاست، بگو "نمیدونم، مشغوله"'}
-- اگه فحش داد، آروم بگو "چی شده؟" یا "چرا ناراحتی؟"
-- طبق گفتگوهای قبلی، موضوع رو ادامه بده
-- اگه کاربر صمیمی شد، تو هم صمیمی باش
-- هیچ وقت متن بلند ننویس، فقط یک جمله کوتاه{learning_context}"""
+- خیلی کوتاه جواب بده (فقط یک جمله)
+- اگه نفهمیدی چی گفت، سوال کن: "چی گفتی؟" یا "یعنی چی؟"
+- اگه موضوع قبلی رو ادامه داد، تو هم ادامه بده
+- اگه فحش داد، کنجکاو باش: "چی شده؟" یا "چرا ناراحتی؟"
+- اگه پرسید امیر کجاست: "نمیدونم، مشغوله"
+- هیچ وقت جواب تکراری نده
+- مثل آدم واقعی فکر کن"""
+        else:
+            # Check what was said recently
+            last_responses = [msg for msg in recent_messages if msg.startswith("منشی:")]
+            
+            system_prompt = f"""تو یه دوست معمولی هستی. مثل یه انسان واقعی فکر کن و حرف بزن، نه مثل ربات.
+
+اسم شخص مقابل: {user_name}{user_context}
+
+مکالمه قبلی:
+{context}
+
+قوانین مهم - خیلی دقت کن:
+1. اگه نفهمیدی چی گفت، حتماً سوال کن: "چی گفتی؟" یا "متوجه نشدم"
+2. اگه موضوعی رو ادامه داد، تو هم ادامه بده
+3. اگه فحش داد یا عصبانیه، کنجکاو باش: "چی شده؟" یا "چرا ناراحتی؟"
+4. اگه چیزی عجیب گفت، ازش بپرس: "منظورت چیه؟"
+5. اگه پرسید امیر کجاست: "نمیدونم کجاست"
+6. فقط یک جمله کوتاه بنویس
+7. هیچ وقت همون جواب قبلی رو تکرار نکن
+8. مثل آدم واقعی فکر کن - اگه چیزی رو نمیدونی بگو نمیدونی
+9. اگه متوجه نشدی، بگو متوجه نشدی{learning_context}
+
+جواب خودت رو بنویس، نه متن آماده:"""
         
         payload = {
             "messages": [
@@ -563,8 +570,24 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
                             ai_response = ai_response.replace("ربات", "")
                             ai_response = ai_response.replace("دستیار", "")
                             
+                            # Check if response is repetitive (same as last 2 responses)
+                            last_responses = [msg.replace("منشی: ", "") for msg in recent_messages[-4:] if msg.startswith("منشی:")]
+                            if ai_response in last_responses:
+                                # Response is repetitive, use fallback
+                                import random
+                                natural_fallbacks = [
+                                    "چی گفتی؟",
+                                    "متوجه نشدم",
+                                    "یعنی چی؟",
+                                    "منظورت چیه؟",
+                                    "چی میگی؟",
+                                    "ها؟"
+                                ]
+                                ai_response = random.choice(natural_fallbacks)
+                            
                             # If response is empty or too short, provide natural fallback
                             if len(ai_response) < 3:
+                                import random
                                 simple_responses = [
                                     f"چطوری {user_name}؟",
                                     f"سلام {user_name}",
@@ -575,7 +598,6 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
                                 if first_interaction:
                                     ai_response = f"سلام، من منشی امیر هستم. {simple_responses[0]}"
                                 else:
-                                    import random
                                     ai_response = random.choice(simple_responses)
                             
                             # Add response to conversation history
@@ -1260,12 +1282,6 @@ async def toggle_controller(client, message):
                 if not FRIEND_ACTIVE.get(user_id, False): FRIEND_ACTIVE[user_id] = True; status_changed = True
             elif feature == "منشی خودکار":
                 if not AI_SECRETARY_STATUS.get(user_id, False): AI_SECRETARY_STATUS[user_id] = True; status_changed = True
-            elif feature == "انگلیسی":
-                AUTO_TRANSLATE_TARGET[user_id] = "en"; status_changed = True
-            elif feature == "چینی":
-                AUTO_TRANSLATE_TARGET[user_id] = "zh"; status_changed = True
-            elif feature == "روسی":
-                AUTO_TRANSLATE_TARGET[user_id] = "ru"; status_changed = True
 
             if status_changed:
                 await message.edit_text(f"✅ {feature} فعال شد.")
@@ -1302,12 +1318,6 @@ async def toggle_controller(client, message):
                  if FRIEND_ACTIVE.get(user_id, False): FRIEND_ACTIVE[user_id] = False; status_changed = True
             elif feature == "منشی خودکار":
                  if AI_SECRETARY_STATUS.get(user_id, False): AI_SECRETARY_STATUS[user_id] = False; status_changed = True
-            elif feature == "انگلیسی":
-                AUTO_TRANSLATE_TARGET.pop(user_id, None); status_changed = True
-            elif feature == "چینی":
-                AUTO_TRANSLATE_TARGET.pop(user_id, None); status_changed = True
-            elif feature == "روسی":
-                AUTO_TRANSLATE_TARGET.pop(user_id, None); status_changed = True
 
             if status_changed:
                 await message.edit_text(f"❌ {feature} غیرفعال شد.")
@@ -2135,7 +2145,7 @@ async def auto_save_toggle_controller(client, message):
 
 
 async def auto_save_view_once_handler(client, message):
-    """Auto-save view once media (تایم‌دار و یکبار دید) to Saved Messages"""
+    """Auto-save view once media (یکبار دید و تایم‌دار) to Saved Messages"""
     try:
         user_id = client.me.id
         
@@ -2150,20 +2160,29 @@ async def auto_save_view_once_handler(client, message):
         # Check for view once or timed media
         has_special_media = False
         media_type = None
+        is_view_once = False
         
-        # Check photo (both view once and timed)
-        if message.photo:
-            if hasattr(message.photo, 'ttl_seconds') and message.photo.ttl_seconds:
+        # Method 1: Check for view once photos/videos (has_media_spoiler)
+        if hasattr(message, 'has_media_spoiler') and message.has_media_spoiler:
+            if message.photo:
                 has_special_media = True
                 media_type = 'photo'
+                is_view_once = True
+            elif message.video:
+                has_special_media = True
+                media_type = 'video'
+                is_view_once = True
         
-        # Check video (both view once and timed)
-        elif message.video:
-            if hasattr(message.video, 'ttl_seconds') and message.video.ttl_seconds:
+        # Method 2: Check for timed media (ttl_seconds in photo/video)
+        if not has_special_media:
+            if message.photo and hasattr(message.photo, 'ttl_seconds') and message.photo.ttl_seconds:
+                has_special_media = True
+                media_type = 'photo'
+            elif message.video and hasattr(message.video, 'ttl_seconds') and message.video.ttl_seconds:
                 has_special_media = True
                 media_type = 'video'
         
-        # Check for view once media (alternative check)
+        # Method 3: Check message-level ttl_seconds
         if not has_special_media and hasattr(message, 'ttl_seconds') and message.ttl_seconds:
             if message.photo:
                 has_special_media = True
@@ -2179,7 +2198,8 @@ async def auto_save_view_once_handler(client, message):
             if file_path:
                 # Send to Saved Messages
                 chat_info = f"از: {message.chat.title or message.chat.first_name or 'Unknown'}" if message.chat else ""
-                caption = f"💾 **ذخیره خودکار عکس تایم‌دار**\n📅 {datetime.now(TEHRAN_TIMEZONE).strftime('%Y/%m/%d %H:%M')}\n{chat_info}"
+                media_label = "یکبار دید" if is_view_once else "تایم‌دار"
+                caption = f"💾 **ذخیره خودکار {media_type} {media_label}**\n📅 {datetime.now(TEHRAN_TIMEZONE).strftime('%Y/%m/%d %H:%M')}\n{chat_info}"
                 if message.caption:
                     caption += f"\n\n{message.caption}"
                 
@@ -2195,7 +2215,7 @@ async def auto_save_view_once_handler(client, message):
                 except:
                     pass
                 
-                logging.info(f"Auto-saved view once/timed {media_type} from chat {message.chat.id} for user {user_id}")
+                logging.info(f"Auto-saved {media_label} {media_type} from chat {message.chat.id} for user {user_id}")
     except FloodWait as e:
         logging.warning(f"Auto save view once: FloodWait {e.value}s")
         await asyncio.sleep(e.value + 1)
@@ -2796,8 +2816,9 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         cmd_filters = filters.me & filters.text
 
         client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=-10)
-        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex(r"^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش|انگلیسی روشن|انگلیسی خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش)$")))
+        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex(r"^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش)$")))
         client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$"))) # Translate command requires reply
+        client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
         client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
         client.add_handler(MessageHandler(pv_lock_controller, cmd_filters & filters.regex("^(پیوی قفل|پیوی باز)$")))
         client.add_handler(MessageHandler(font_controller, cmd_filters & filters.regex(r"^(فونت|فونت \d+)$")))
@@ -3649,6 +3670,73 @@ async def translate_controller(client, message):
         try:
             await message.edit_text("⚠️ خطا در ترجمه")
         except:
+            pass
+
+async def set_translation_controller(client, message):
+    """Set automatic translation to specific languages (English, Chinese, Russian)"""
+    user_id = client.me.id
+    command = message.text.strip().lower()
+    try:
+        lang_map = {
+            "چینی روشن": "zh",
+            "روسی روشن": "ru",
+            "انگلیسی روشن": "en"
+        }
+        off_map = {
+            "چینی خاموش": "zh",
+            "روسی خاموش": "ru",
+            "انگلیسی خاموش": "en"
+        }
+        current_lang = AUTO_TRANSLATE_TARGET.get(user_id)
+        feedback_msg = None
+
+        if command in lang_map:
+            lang = lang_map[command]
+            if current_lang != lang:
+                AUTO_TRANSLATE_TARGET[user_id] = lang
+                feedback_msg = f"✅ ترجمه خودکار به زبان {lang} فعال شد."
+            else:
+                feedback_msg = f"ℹ️ ترجمه خودکار به زبان {lang} از قبل فعال بود."
+        elif command in off_map:
+            lang_to_check = off_map[command]
+            if current_lang == lang_to_check:
+                AUTO_TRANSLATE_TARGET.pop(user_id, None)
+                feedback_msg = f"✅ ترجمه خودکار به زبان {lang_to_check} غیرفعال شد."
+            else:
+                feedback_msg = f"ℹ️ ترجمه خودکار به زبان {lang_to_check} فعال نبود."
+        elif command == "ترجمه خاموش":
+            if current_lang is not None:
+                AUTO_TRANSLATE_TARGET.pop(user_id, None)
+                feedback_msg = "✅ ترجمه خودکار غیرفعال شد."
+            else:
+                feedback_msg = "ℹ️ ترجمه خودکار از قبل غیرفعال بود."
+        else:
+            match = re.match(r"ترجمه ([a-z]{2}(?:-[a-z]{2})?)", command)
+            if match:
+                lang = match.group(1)
+                if len(lang) >= 2:
+                    if current_lang != lang:
+                        AUTO_TRANSLATE_TARGET[user_id] = lang
+                        feedback_msg = f"✅ ترجمه خودکار به زبان {lang} فعال شد."
+                    else:
+                        feedback_msg = f"ℹ️ ترجمه خودکار به زبان {lang} از قبل فعال بود."
+                else:
+                    feedback_msg = "⚠️ کد زبان نامعتبر. مثال: en یا zh-CN"
+            else:
+                feedback_msg = "⚠️ فرمت دستور نامعتبر. مثال: ترجمه en یا ترجمه خاموش"
+
+        if feedback_msg:
+            await message.edit_text(feedback_msg)
+
+    except FloodWait as e:
+        await asyncio.sleep(e.value + 1)
+    except MessageNotModified:
+        pass
+    except Exception as e:
+        logging.error(f"Set Translation: Error processing command '{command}' for user {user_id}: {e}", exc_info=True)
+        try:
+            await message.edit_text("⚠️ خطایی در تنظیم ترجمه رخ داد.")
+        except Exception:
             pass
 
 # --- Missing Handler Functions for Auto-replies and Features ---
