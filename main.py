@@ -1051,11 +1051,12 @@ async def translate_text(text: str, target_lang: str = "fa") -> str:
     return text
 
 async def outgoing_message_modifier(client, message):
+    """Modify outgoing messages for bold and auto-translation"""
     user_id = client.me.id
     if not message.text or message.text.startswith("/") or message.entities:
         return
 
-    # چک کردن اگر دستور هست
+    # Skip commands
     if re.match(COMMAND_REGEX, message.text.strip(), re.IGNORECASE):
         return
 
@@ -1063,26 +1064,29 @@ async def outgoing_message_modifier(client, message):
     modified_text = original_text
     needs_edit = False
 
+    # Auto translation
     target_lang = AUTO_TRANSLATE_TARGET.get(user_id)
     if target_lang:
-        translated = await translate_text(modified_text, target_lang)
-        if translated != modified_text:
-             modified_text = translated
-             needs_edit = True
-             original_text_before_bold = translated
-        else:
-             original_text_before_bold = original_text
-    else:
-        original_text_before_bold = original_text
+        try:
+            from googletrans import Translator
+            translator = Translator()
+            result = translator.translate(modified_text, dest=target_lang)
+            if result.text and result.text != modified_text:
+                modified_text = result.text
+                needs_edit = True
+        except ImportError:
+            logging.warning("googletrans not installed, skipping auto-translation")
+        except Exception as trans_err:
+            logging.warning(f"Auto-translation error: {trans_err}")
 
+    # Bold mode
     if BOLD_MODE_STATUS.get(user_id, False):
         if not modified_text.startswith(('**', '__')):
-            modified_text_bolded = f"**{modified_text}**"
-            if modified_text_bolded != original_text_before_bold:
-                 modified_text = modified_text_bolded
-                 needs_edit = True
+            modified_text = f"**{modified_text}**"
+            needs_edit = True
 
-    if needs_edit:
+    # Apply modifications
+    if needs_edit and modified_text != original_text:
         try:
             await message.edit_text(modified_text, disable_web_page_preview=True)
         except FloodWait as e:
@@ -1275,6 +1279,14 @@ async def toggle_controller(client, message):
                 if not ENEMY_ACTIVE.get(user_id, False): ENEMY_ACTIVE[user_id] = True; status_changed = True
             elif feature == "دوست":
                 if not FRIEND_ACTIVE.get(user_id, False): FRIEND_ACTIVE[user_id] = True; status_changed = True
+            elif feature == "منشی خودکار":
+                if not AI_SECRETARY_STATUS.get(user_id, False): AI_SECRETARY_STATUS[user_id] = True; status_changed = True
+            elif feature == "انگلیسی":
+                AUTO_TRANSLATE_TARGET[user_id] = "en"; status_changed = True
+            elif feature == "چینی":
+                AUTO_TRANSLATE_TARGET[user_id] = "zh"; status_changed = True
+            elif feature == "روسی":
+                AUTO_TRANSLATE_TARGET[user_id] = "ru"; status_changed = True
 
             if status_changed:
                 await message.edit_text(f"✅ {feature} فعال شد.")
@@ -1309,11 +1321,86 @@ async def toggle_controller(client, message):
                  if ENEMY_ACTIVE.get(user_id, False): ENEMY_ACTIVE[user_id] = False; status_changed = True
             elif feature == "دوست":
                  if FRIEND_ACTIVE.get(user_id, False): FRIEND_ACTIVE[user_id] = False; status_changed = True
+            elif feature == "منشی خودکار":
+                 if AI_SECRETARY_STATUS.get(user_id, False): AI_SECRETARY_STATUS[user_id] = False; status_changed = True
+            elif feature == "انگلیسی":
+                AUTO_TRANSLATE_TARGET.pop(user_id, None); status_changed = True
+            elif feature == "چینی":
+                AUTO_TRANSLATE_TARGET.pop(user_id, None); status_changed = True
+            elif feature == "روسی":
+                AUTO_TRANSLATE_TARGET.pop(user_id, None); status_changed = True
 
             if status_changed:
                 await message.edit_text(f"❌ {feature} غیرفعال شد.")
             else:
                 await message.edit_text(f"ℹ️ {feature} از قبل غیرفعال بود.")
+        
+        # AI Learning commands
+        elif command == "تست ai":
+            try:
+                test_response = await get_ai_response("سلام", "تست", user_id, user_id)
+                await message.edit_text(f"✅ **AI تست موفق:**\n\n{test_response}")
+            except Exception as e:
+                await message.edit_text(f"❌ **AI تست ناموفق:**\n\n{str(e)}")
+        elif command == "وضعیت یادگیری":
+            try:
+                if learning_collection is None:
+                    await message.edit_text("❌ پایگاه داده یادگیری در دسترس نیست")
+                    return
+                
+                db_size = await get_learning_db_size()
+                total_conversations = learning_collection.count_documents({'type': 'conversation'})
+                total_patterns = learning_collection.count_documents({'type': 'pattern'})
+                
+                status_text = f"""🧠 **وضعیت یادگیری AI**
+
+📊 **حجم دیتابیس:** {db_size:.2f} MB / {AI_MAX_TOTAL_DB_SIZE_MB} MB
+💬 **گفتگوها:** {total_conversations}
+🧩 **الگوها:** {total_patterns}"""
+                
+                await message.edit_text(status_text)
+            except Exception as e:
+                logging.error(f"Learning status error: {e}")
+                await message.edit_text(f"❌ خطا در نمایش وضعیت: {str(e)}")
+        elif command == "بکاپ یادگیری":
+            try:
+                if learning_collection is None:
+                    await message.edit_text("❌ پایگاه داده یادگیری در دسترس نیست")
+                    return
+                
+                # Export all learning data
+                all_data = list(learning_collection.find({}))
+                for item in all_data:
+                    item['_id'] = str(item['_id'])  # Convert ObjectId to string
+                
+                # Save to file
+                backup_file = f"learning_backup_{user_id}_{int(time.time())}.json"
+                async with aiofiles.open(backup_file, 'w', encoding='utf-8') as f:
+                    await f.write(json.dumps(all_data, ensure_ascii=False, indent=2))
+                
+                # Send file
+                await client.send_document("me", backup_file, caption="📦 بکاپ دیتابیس یادگیری")
+                
+                # Delete temp file
+                if os.path.exists(backup_file):
+                    os.remove(backup_file)
+                
+                await message.edit_text(f"✅ بکاپ با موفقیت ایجاد شد ({len(all_data)} رکورد)")
+            except Exception as e:
+                logging.error(f"Learning backup error: {e}")
+                await message.edit_text(f"❌ خطا در ایجاد بکاپ: {str(e)}")
+        elif command == "پاکسازی یادگیری":
+            try:
+                if learning_collection is None:
+                    await message.edit_text("❌ پایگاه داده یادگیری در دسترس نیست")
+                    return
+                
+                # Clear all learning data
+                result = learning_collection.delete_many({})
+                await message.edit_text(f"✅ پاکسازی کامل: {result.deleted_count} رکورد حذف شد")
+            except Exception as e:
+                logging.error(f"Learning cleanup error: {e}")
+                await message.edit_text(f"❌ خطا در پاکسازی: {str(e)}")
 
     except FloodWait as e:
         await asyncio.sleep(e.value + 1)
@@ -1780,6 +1867,9 @@ async def help_controller(client, message):
 
 **🔹 ترجمه**
 • `ترجمه` (ریپلای) - ترجمه به فارسی با تشخیص زبان خودکار
+• `انگلیسی روشن/خاموش` - ترجمه خودکار به انگلیسی
+• `چینی روشن/خاموش` - ترجمه خودکار به چینی
+• `روسی روشن/خاموش` - ترجمه خودکار به روسی
 ⚠️ **نیاز:** `pip install googletrans==4.0.0-rc1`
 
 **🔹 ساعت و فونت**
@@ -1849,6 +1939,7 @@ async def help_controller(client, message):
 **🤖 هوش مصنوعی**
 • `تست ai` - تست عملکرد AI
 • `وضعیت یادگیری` - نمایش آمار یادگیری
+• `بکاپ یادگیری` - دریافت بکاپ از دیتابیس
 • `پاکسازی یادگیری` - حذف داده‌های یادگیری
 
 **🔹 ابزار**
@@ -2051,36 +2142,51 @@ async def auto_save_toggle_controller(client, message):
 
 
 async def auto_save_view_once_handler(client, message):
-    """Auto-save view once media to Saved Messages"""
+    """Auto-save view once media (تایم‌دار و یکبار دید) to Saved Messages"""
     try:
         user_id = client.me.id
         
-        # Check if auto-save is enabled
+        # Check if auto-save is enabled for this user
         if not AUTO_SAVE_VIEW_ONCE.get(user_id, False):
             return
         
-        # Check if message has view once media
+        # Check if message has media
         if not message.media:
             return
         
-        # Check for view once photo or video
-        has_view_once = False
+        # Check for view once or timed media
+        has_special_media = False
         media_type = None
         
-        if message.photo and hasattr(message.photo, 'ttl_seconds') and message.photo.ttl_seconds:
-            has_view_once = True
-            media_type = 'photo'
-        elif message.video and hasattr(message.video, 'ttl_seconds') and message.video.ttl_seconds:
-            has_view_once = True
-            media_type = 'video'
+        # Check photo (both view once and timed)
+        if message.photo:
+            if hasattr(message.photo, 'ttl_seconds') and message.photo.ttl_seconds:
+                has_special_media = True
+                media_type = 'photo'
         
-        if has_view_once:
+        # Check video (both view once and timed)
+        elif message.video:
+            if hasattr(message.video, 'ttl_seconds') and message.video.ttl_seconds:
+                has_special_media = True
+                media_type = 'video'
+        
+        # Check for view once media (alternative check)
+        if not has_special_media and hasattr(message, 'ttl_seconds') and message.ttl_seconds:
+            if message.photo:
+                has_special_media = True
+                media_type = 'photo'
+            elif message.video:
+                has_special_media = True
+                media_type = 'video'
+        
+        if has_special_media:
             # Download the media
             file_path = await message.download()
             
             if file_path:
                 # Send to Saved Messages
-                caption = f"💾 ذخیره خودکار\n📅 {datetime.now(TEHRAN_TIMEZONE).strftime('%Y/%m/%d %H:%M')}"
+                chat_info = f"از: {message.chat.title or message.chat.first_name or 'Unknown'}" if message.chat else ""
+                caption = f"💾 **ذخیره خودکار عکس تایم‌دار**\n📅 {datetime.now(TEHRAN_TIMEZONE).strftime('%Y/%m/%d %H:%M')}\n{chat_info}"
                 if message.caption:
                     caption += f"\n\n{message.caption}"
                 
@@ -2091,12 +2197,12 @@ async def auto_save_view_once_handler(client, message):
                 
                 # Delete downloaded file
                 try:
-                    import os
-                    os.remove(file_path)
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
                 except:
                     pass
                 
-                logging.info(f"Auto-saved view once {media_type} from chat {message.chat.id} for user {user_id}")
+                logging.info(f"Auto-saved view once/timed {media_type} from chat {message.chat.id} for user {user_id}")
     except FloodWait as e:
         logging.warning(f"Auto save view once: FloodWait {e.value}s")
         await asyncio.sleep(e.value + 1)
@@ -2697,7 +2803,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         cmd_filters = filters.me & filters.text
 
         client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=-10)
-        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex(r"^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|آپلود عکس روشن|آپلود عکس خاموش|تماشا گیف روشن|تماشا گیف خاموش|پیوی قفل|پیوی باز)$")))
+        client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex(r"^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش|انگلیسی روشن|انگلیسی خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش)$")))
         client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$"))) # Translate command requires reply
         client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
         client.add_handler(MessageHandler(pv_lock_controller, cmd_filters & filters.regex("^(پیوی قفل|پیوی باز)$")))
@@ -3480,143 +3586,6 @@ async def text_mode_handler(client, message):
     except Exception as e:
         logging.error(f"Critical error in text_mode_handler: {e}")
         # Don't re-raise to prevent session crash
-
-async def outgoing_message_modifier(client, message):
-    """Modify outgoing messages for various features"""
-    user_id = client.me.id
-    
-    try:
-        # Skip if no text
-        if not message.text:
-            return
-            
-        # Auto translation
-        target_lang = AUTO_TRANSLATE_TARGET.get(user_id)
-        if target_lang:
-            # Simple translation placeholder - you'd need a real translation service
-            # For now, just add a translation indicator
-            translated_text = f"[AUTO-TRANSLATED to {target_lang}] {message.text}"
-            await message.edit_text(translated_text)
-            
-    except Exception as e:
-        logging.error(f"Outgoing message modifier error: {e}")
-
-async def toggle_controller(client, message):
-    """Handle toggle commands"""
-    user_id = client.me.id
-    command = message.text.strip()
-    
-    try:
-        if command == "سین روشن":
-            AUTO_SEEN_STATUS[user_id] = True
-            await message.edit_text("✅ خواندن خودکار پیام‌ها فعال شد.")
-        elif command == "سین خاموش":
-            AUTO_SEEN_STATUS[user_id] = False
-            await message.edit_text("❌ خواندن خودکار پیام‌ها غیرفعال شد.")
-        elif command == "منشی روشن":
-            SECRETARY_MODE_STATUS[user_id] = True
-            await message.edit_text("✅ حالت منشی فعال شد.")
-        elif command == "منشی خاموش":
-            SECRETARY_MODE_STATUS[user_id] = False
-            await message.edit_text("❌ حالت منشی غیرفعال شد.")
-        elif command == "منشی خودکار روشن":
-            AI_SECRETARY_STATUS[user_id] = True
-            SECRETARY_MODE_STATUS[user_id] = False  # Disable regular secretary
-            await message.edit_text("✅ منشی خودکار فعال شد.\n🤖 پیام‌های PV به صورت خودکار با هوش مصنوعی پاسخ داده می‌شوند.")
-        elif command == "منشی خودکار خاموش":
-            AI_SECRETARY_STATUS[user_id] = False
-            await message.edit_text("❌ منشی خودکار غیرفعال شد.")
-        elif command == "تست ai":
-            try:
-                test_response = await get_ai_response("سلام", "تست", user_id, user_id)
-                await message.edit_text(f"✅ AI تست موفق: {test_response}")
-            except Exception as e:
-                await message.edit_text(f"❌ AI تست ناموفق: {str(e)}")
-        elif command == "وضعیت یادگیری":
-            try:
-                if learning_collection is None:
-                    await message.edit_text("❌ پایگاه داده یادگیری در دسترس نیست")
-                    return
-                
-                db_size = await get_learning_db_size()
-                total_conversations = learning_collection.count_documents({'type': 'conversation'})
-                total_patterns = learning_collection.count_documents({'type': 'pattern'})
-                total_users = len(learning_collection.distinct('sender_name', {'type': 'user_preference'}))
-                
-                status_text = f"🧠 **وضعیت یادگیری AI**\n\n"
-                status_text += f"📊 **حجم دیتابیس:** {db_size:.2f} MB / {AI_MAX_TOTAL_DB_SIZE_MB} MB\n"
-                status_text += f"💬 **گفتگوها:** {total_conversations}\n"
-                status_text += f"🧩 **الگوها:** {total_patterns}\n"
-                status_text += f"👥 **کاربران:** {total_users}"
-                
-                await message.edit_text(status_text)
-            except Exception as e:
-                logging.error(f"Learning status error: {e}")
-                await message.edit_text(f"❌ خطا در نمایش وضعیت: {str(e)}")
-        elif command == "پاکسازی یادگیری":
-            try:
-                if learning_collection is None:
-                    await message.edit_text("❌ پایگاه داده یادگیری در دسترس نیست")
-                    return
-                
-                # Clear all learning data
-                result = learning_collection.delete_many({})
-                await message.edit_text(f"✅ پاکسازی کامل: {result.deleted_count} رکورد حذف شد")
-            except Exception as e:
-                logging.error(f"Learning cleanup error: {e}")
-                await message.edit_text(f"❌ خطا در پاکسازی: {str(e)}")
-        elif command == "انتی لوگین روشن":
-            ANTI_LOGIN_STATUS[user_id] = True
-            await message.edit_text("✅ انتی لوگین فعال شد.")
-        elif command == "انتی لوگین خاموش":
-            ANTI_LOGIN_STATUS[user_id] = False
-            await message.edit_text("❌ انتی لوگین غیرفعال شد.")
-        elif command == "تایپ روشن":
-            TYPING_MODE_STATUS[user_id] = True
-            await message.edit_text("✅ حالت تایپ مداوم فعال شد.")
-        elif command == "تایپ خاموش":
-            TYPING_MODE_STATUS[user_id] = False
-            await message.edit_text("❌ حالت تایپ مداوم غیرفعال شد.")
-        elif command == "بازی روشن":
-            PLAYING_MODE_STATUS[user_id] = True
-            await message.edit_text("✅ حالت بازی مداوم فعال شد.")
-        elif command == "بازی خاموش":
-            PLAYING_MODE_STATUS[user_id] = False
-            await message.edit_text("❌ حالت بازی مداوم غیرفعال شد.")
-        elif command == "ضبط ویس روشن":
-            RECORD_VOICE_STATUS[user_id] = True
-            await message.edit_text("✅ حالت ضبط ویس مداوم فعال شد.")
-        elif command == "ضبط ویس خاموش":
-            RECORD_VOICE_STATUS[user_id] = False
-            await message.edit_text("❌ حالت ضبط ویس مداوم غیرفعال شد.")
-        elif command == "عکس روشن":
-            UPLOAD_PHOTO_STATUS[user_id] = True
-            await message.edit_text("✅ حالت آپلود عکس مداوم فعال شد.")
-        elif command == "عکس خاموش":
-            UPLOAD_PHOTO_STATUS[user_id] = False
-            await message.edit_text("❌ حالت آپلود عکس مداوم غیرفعال شد.")
-        elif command == "گیف روشن":
-            WATCH_GIF_STATUS[user_id] = True
-            await message.edit_text("✅ حالت تماشای گیف مداوم فعال شد.")
-        elif command == "گیف خاموش":
-            WATCH_GIF_STATUS[user_id] = False
-            await message.edit_text("❌ حالت تماشای گیف مداوم غیرفعال شد.")
-        elif command == "دشمن روشن":
-            ENEMY_ACTIVE[user_id] = True
-            await message.edit_text("✅ پاسخ خودکار به دشمنان فعال شد.")
-        elif command == "دشمن خاموش":
-            ENEMY_ACTIVE[user_id] = False
-            await message.edit_text("❌ پاسخ خودکار به دشمنان غیرفعال شد.")
-        elif command == "دوست روشن":
-            FRIEND_ACTIVE[user_id] = True
-            await message.edit_text("✅ پاسخ خودکار به دوستان فعال شد.")
-        elif command == "دوست خاموش":
-            FRIEND_ACTIVE[user_id] = False
-            await message.edit_text("❌ پاسخ خودکار به دوستان غیرفعال شد.")
-            
-    except Exception as e:
-        logging.error(f"Toggle controller error: {e}")
-        await message.edit_text("⚠️ خطا در تنظیم وضعیت")
 
 async def auto_save_toggle_controller(client, message):
     """Handle auto save toggle"""
