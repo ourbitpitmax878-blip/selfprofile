@@ -49,7 +49,7 @@ API_ID = 28190856
 API_HASH = "6b9b5309c2a211b526c6ddad6eabb521"
 
 # --- Database Setup (MongoDB) ---
-MONGO_URI = "mongodb+srv://amif5580_db_user:qewUPxpS1TN4tQD4@cluster0.gtkw6em.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+MONGO_URI = "mongodb+srv://amirpitmax15_db_user:9yw2e6aEBJK4ih5e@cluster0.axmp3tr.mongodb.net/?appName=Cluster0"
 mongo_client = None
 sessions_collection = None
 learning_collection = None
