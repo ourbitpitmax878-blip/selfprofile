@@ -15,4 +15,4 @@ pytube
 streamlit 
 googletrans
 aiofiles
-googletrans==4.0.0 rcl
+googletrans==4.0.0rcl
