@@ -180,8 +180,8 @@ ACTIVE_BOTS = {}
 DEFAULT_SECRETARY_MESSAGE = "سلام! منشی هستم. پیامتون رو دیدم، بعدا جواب می‌دم."
 
 # --- Cloudflare Workers AI Configuration ---
-CLOUDFLARE_ACCOUNT_ID = "ce2e4697a5504848b6f18b15dda6eee9"
-CLOUDFLARE_API_TOKEN = "oG_r_b0Y-7exOWXcrg9MlLa1fPW9fkepcGU-DfhW"
+CLOUDFLARE_ACCOUNT_ID = ""
+CLOUDFLARE_API_TOKEN = ""
 CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3-8b-instruct"
 
 # --- First Comment Variables ---
