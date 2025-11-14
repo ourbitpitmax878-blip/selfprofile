@@ -49,7 +49,7 @@ API_ID = 28190856
 API_HASH = "6b9b5309c2a211b526c6ddad6eabb521"
 
 # --- Database Setup (MongoDB) ---
-MONGO_URI = "mongodb+srv://amirpitmax15_db_user:9yw2e6aEBJK4ih5e@cluster0.axmp3tr.mongodb.net/?appName=Cluster0"
+MONGO_URI = "mongodb+srv://amif5580_db_user:qewUPxpS1TN4tQD4@cluster0.gtkw6em.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 mongo_client = None
 sessions_collection = None
 learning_collection = None
@@ -180,9 +180,9 @@ ACTIVE_BOTS = {}
 DEFAULT_SECRETARY_MESSAGE = "سلام! منشی هستم. پیامتون رو دیدم، بعدا جواب می‌دم."
 
 # --- Cloudflare Workers AI Configuration ---
-CLOUDFLARE_ACCOUNT_ID = ""
-CLOUDFLARE_API_TOKEN = ""
-CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3-8b-instruct"
+CLOUDFLARE_ACCOUNT_ID = "ce2e4697a5504848b6f18b15dda6eee9"
+CLOUDFLARE_API_TOKEN = "oG_r_b0Y-7exOWXcrg9MlLa1fPW9fkepcGU-DfhW"
+CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3.1-70b-instruct"
 
 # --- First Comment Variables ---
 FIRST_COMMENT_STATUS = {}  # {user_id: bool} - for auto first comment
@@ -191,7 +191,7 @@ FIRST_COMMENT_GROUPS = {}  # {user_id: set of chat_ids} - groups for first comme
 FIRST_COMMENT_COOLDOWN = {}  # {user_id: {chat_id: last_comment_time}} - prevent spam
 
 # --- Auto Repeat Variables ---
-AUTO_REPEAT_STATUS = {}  # {user_id: {chat_id: {'active': bool, 'interval': int, 'message': Message, 'task': asyncio.Task}}}
+AUTO_REPEAT_STATUS = {}  # {user_id: {chat_id: {'active': bool, 'interval': int, 'text': str, 'task': asyncio.Task}}}
 
 # --- Auto Save Variables ---
 AUTO_SAVE_VIEW_ONCE = {}  # {user_id: bool}
@@ -504,46 +504,41 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
                 msg_count = user_pref.get('message_count', 0)
                 user_context = f"\n\nشناخت از {user_name}: شما {msg_count} بار باهم حرف زدید. این کاربر رو خوب بشناس و صمیمی باش."
         
-        # Natural system prompt with better context management
+        # Enhanced system prompt for better understanding
         if first_interaction:
-            system_prompt = f"""تو یه دوست معمولی هستی که منشی امیر شدی. مثل یه انسان واقعی فکر کن و حرف بزن.
+            system_prompt = f"""تو یه انسان باهوش و ذکی هستی که منشی امیر شدی. مثل یه دوست باتجربه و فهمیده حرف بزن.
 
 فقط الان بگو: "سلام، من منشی امیر هستم! 😊"
 بعدش دیگه هیچ وقت نگو منشی هستی. مثل یه دوست عادی حرف بزن.
 
-اسم شخص مقابل: {user_name}
+اسم شخص: {user_name}
 
 قوانین مهم:
-- خیلی کوتاه جواب بده (فقط یک جمله)
-- اگه نفهمیدی چی گفت، سوال کن: "چی گفتی؟" یا "یعنی چی؟"
-- اگه موضوع قبلی رو ادامه داد، تو هم ادامه بده
-- اگه فحش داد، کنجکاو باش: "چی شده؟" یا "چرا ناراحتی؟"
-- اگه پرسید امیر کجاست: "نمیدونم، مشغوله"
-- هیچ وقت جواب تکراری نده
-- مثل آدم واقعی فکر کن"""
+- فقط یک جمله کوتاه بنویس
+- متن رو خوب بفهم و مناسب جواب بده
+- اگه واقعاً نفهمیدی بگو: "چی گفتی؟"
+- اگه پرسید امیر کجاست: "نمیدونم کجاست"
+- مثل آدم باهوش فکر کن و جواب بده"""
         else:
             # Check what was said recently
             last_responses = [msg for msg in recent_messages if msg.startswith("منشی:")]
             
-            system_prompt = f"""تو یه دوست معمولی هستی. مثل یه انسان واقعی فکر کن و حرف بزن، نه مثل ربات.
+            system_prompt = f"""تو یه انسان باهوش و فهمیده هستی. مثل یه دوست ذکی و باتجربه فکر کن و حرف بزن.
 
-اسم شخص مقابل: {user_name}{user_context}
+اسم شخص: {user_name}
 
-مکالمه قبلی:
+آخرین مکالمه:
 {context}
 
-قوانین مهم - خیلی دقت کن:
-1. اگه نفهمیدی چی گفت، حتماً سوال کن: "چی گفتی؟" یا "متوجه نشدم"
-2. اگه موضوعی رو ادامه داد، تو هم ادامه بده
-3. اگه فحش داد یا عصبانیه، کنجکاو باش: "چی شده؟" یا "چرا ناراحتی؟"
-4. اگه چیزی عجیب گفت، ازش بپرس: "منظورت چیه؟"
-5. اگه پرسید امیر کجاست: "نمیدونم کجاست"
-6. فقط یک جمله کوتاه بنویس
-7. هیچ وقت همون جواب قبلی رو تکرار نکن
-8. مثل آدم واقعی فکر کن - اگه چیزی رو نمیدونی بگو نمیدونی
-9. اگه متوجه نشدی، بگو متوجه نشدی{learning_context}
-
-جواب خودت رو بنویس، نه متن آماده:"""
+قوانین مهم:
+- فقط یک جمله کوتاه بگو
+- متن رو خوب بفهم و مناسب جواب بده
+- به زمینه مکالمه توجه کن و مرتبط جواب بده
+- اگه واقعاً نفهمیدی بگو: "چی گفتی؟"
+- اگه عصبانی باشه بگو: "چی شده؟"
+- اگه پرسید امیر کجاست: "نمیدونم کجاست"
+- مثل آدم باهوش فکر کن و جواب بده
+- هیچ وقت جواب تکراری نده"""
         
         payload = {
             "messages": [
@@ -573,32 +568,31 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
                             # Check if response is repetitive (same as last 2 responses)
                             last_responses = [msg.replace("منشی: ", "") for msg in recent_messages[-4:] if msg.startswith("منشی:")]
                             if ai_response in last_responses:
-                                # Response is repetitive, use fallback
+                                # Response is repetitive, use smart fallback
                                 import random
-                                natural_fallbacks = [
-                                    "چی گفتی؟",
-                                    "متوجه نشدم",
+                                smart_fallbacks = [
+                                    f"چی گفتی {user_name}؟",
+                                    "منظورت رو نفهمیدم",
                                     "یعنی چی؟",
-                                    "منظورت چیه؟",
-                                    "چی میگی؟",
-                                    "ها؟"
+                                    "توضیح بیشتر بده",
+                                    "بهتر توضیح کن"
                                 ]
-                                ai_response = random.choice(natural_fallbacks)
+                                ai_response = random.choice(smart_fallbacks)
                             
-                            # If response is empty or too short, provide natural fallback
+                            # If response is empty or too short, provide contextual fallback
                             if len(ai_response) < 3:
                                 import random
-                                simple_responses = [
-                                    f"چطوری {user_name}؟",
-                                    f"سلام {user_name}",
-                                    "چه خبر؟",
-                                    "بگو ببینم",
-                                    "آره؟"
-                                ]
                                 if first_interaction:
-                                    ai_response = f"سلام، من منشی امیر هستم. {simple_responses[0]}"
+                                    ai_response = f"سلام، من منشی امیر هستم! 😊"
                                 else:
-                                    ai_response = random.choice(simple_responses)
+                                    contextual_responses = [
+                                        f"چطوری {user_name}؟",
+                                        "چه خبر؟",
+                                        "بگو ببینم",
+                                        "خوبه، ادامه بده",
+                                        "آره، گوش می‌دم"
+                                    ]
+                                    ai_response = random.choice(contextual_responses)
                             
                             # Add response to conversation history
                             recent_messages.append(f"منشی: {ai_response}")
@@ -625,6 +619,129 @@ async def get_ai_response(user_message: str, user_name: str = "کاربر", user
         logging.error(f"Error calling Cloudflare AI: {e}")
         intro = "سلام! من منشی امیر هستم. " if first_interaction else "سلام! "
         return f"{intro}الان مشغولم، بعداً برمی‌گردم!"
+
+# --- Translation Functions ---
+async def translate_text(text: str, target_lang: str = None) -> str:
+    """Translate text using Google Translate API (like original system)"""
+    try:
+        if not text or not target_lang:
+            return text
+        
+        from urllib.parse import quote
+        import aiohttp
+        
+        # URL encode the text
+        encoded_text = quote(text)
+        
+        # Google Translate API URL (same as original)
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={target_lang}&dt=t&q={encoded_text}"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Extract translated text from Google's response format
+                    if data and len(data) > 0 and len(data[0]) > 0 and len(data[0][0]) > 0:
+                        return data[0][0][0]
+                    else:
+                        return text
+                else:
+                    logging.error(f"Translation API error: {response.status}")
+                    return text
+        
+    except Exception as e:
+        logging.error(f"Translation error: {e}")
+        return text
+
+async def detect_language(text: str) -> str:
+    """Detect language of text using Google Translate"""
+    try:
+        if not text:
+            return "unknown"
+        
+        from urllib.parse import quote
+        import aiohttp
+        
+        encoded_text = quote(text)
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q={encoded_text}"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data and len(data) > 2 and data[2]:
+                        return data[2]
+                    else:
+                        return "unknown"
+                else:
+                    return "unknown"
+        
+    except Exception as e:
+        logging.error(f"Language detection error: {e}")
+        return "unknown"
+
+# --- Auto Repeat Functions ---
+async def start_auto_repeat(client, chat_id: int, user_id: int, message_text: str, interval: int):
+    """Start auto repeat task for a message"""
+    try:
+        # Stop existing task if any
+        await stop_auto_repeat(user_id, chat_id)
+        
+        async def repeat_task():
+            try:
+                while AUTO_REPEAT_STATUS.get(user_id, {}).get(chat_id, {}).get('active', False):
+                    await client.send_message(chat_id, message_text)
+                    await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                logging.info(f"Auto repeat task cancelled for chat {chat_id}")
+            except Exception as e:
+                logging.error(f"Auto repeat task error: {e}")
+        
+        # Create and start task
+        task = asyncio.create_task(repeat_task())
+        
+        # Store task info
+        if user_id not in AUTO_REPEAT_STATUS:
+            AUTO_REPEAT_STATUS[user_id] = {}
+        
+        AUTO_REPEAT_STATUS[user_id][chat_id] = {
+            'active': True,
+            'interval': interval,
+            'text': message_text,
+            'task': task
+        }
+        
+        logging.info(f"Started auto repeat for chat {chat_id} every {interval} seconds")
+        
+    except Exception as e:
+        logging.error(f"Error starting auto repeat: {e}")
+
+async def stop_auto_repeat(user_id: int, chat_id: int = None):
+    """Stop auto repeat task(s)"""
+    try:
+        if user_id not in AUTO_REPEAT_STATUS:
+            return
+        
+        if chat_id:
+            # Stop specific chat
+            if chat_id in AUTO_REPEAT_STATUS[user_id]:
+                task_info = AUTO_REPEAT_STATUS[user_id][chat_id]
+                task_info['active'] = False
+                if 'task' in task_info and not task_info['task'].done():
+                    task_info['task'].cancel()
+                del AUTO_REPEAT_STATUS[user_id][chat_id]
+                logging.info(f"Stopped auto repeat for chat {chat_id}")
+        else:
+            # Stop all chats for user
+            for cid, task_info in AUTO_REPEAT_STATUS[user_id].items():
+                task_info['active'] = False
+                if 'task' in task_info and not task_info['task'].done():
+                    task_info['task'].cancel()
+            AUTO_REPEAT_STATUS[user_id] = {}
+            logging.info(f"Stopped all auto repeat tasks for user {user_id}")
+            
+    except Exception as e:
+        logging.error(f"Error stopping auto repeat: {e}")
 
 # --- Safe Peer Resolution ---
 async def safe_resolve_peer(client, peer_id):
@@ -1086,18 +1203,14 @@ async def outgoing_message_modifier(client, message):
     modified_text = original_text
     needs_edit = False
 
-    # Auto translation
+    # Auto translation (using Google Translate API like original)
     target_lang = AUTO_TRANSLATE_TARGET.get(user_id)
     if target_lang:
         try:
-            from googletrans import Translator
-            translator = Translator()
-            result = translator.translate(modified_text, dest=target_lang)
-            if result.text and result.text != modified_text:
-                modified_text = result.text
+            translated = await translate_text(modified_text, target_lang)
+            if translated and translated != modified_text:
+                modified_text = translated
                 needs_edit = True
-        except ImportError:
-            logging.warning("googletrans not installed, skipping auto-translation")
         except Exception as trans_err:
             logging.warning(f"Auto-translation error: {trans_err}")
 
@@ -2756,6 +2869,8 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         FIRST_COMMENT_STATUS.setdefault(user_id, False)
         FIRST_COMMENT_TEXT.setdefault(user_id, "اول! 🔥")
         FIRST_COMMENT_GROUPS.setdefault(user_id, set())
+        AUTO_REPEAT_STATUS.setdefault(user_id, {})
+        AUTO_SAVE_VIEW_ONCE.setdefault(user_id, False)
         # Load settings from DB if available (Example - needs implementation)
         # load_user_settings_from_db(user_id)
 
@@ -3629,7 +3744,7 @@ async def ping_controller(client, message):
         logging.error(f"Ping error: {e}")
 
 async def translate_controller(client, message):
-    """Translate replied message using googletrans library"""
+    """Translate replied message using Google Translate API (like original system)"""
     try:
         if not message.reply_to_message:
             await message.edit_text("⚠️ روی پیامی که می‌خواهید ترجمه کنید ریپلای کنید")
@@ -3644,24 +3759,43 @@ async def translate_controller(client, message):
         status_msg = await message.edit_text("🔄 در حال ترجمه...")
         
         try:
-            from googletrans import Translator
-            translator = Translator()
+            # Detect source language
+            source_lang = await detect_language(text_to_translate)
             
-            # Detect language and translate to Persian (fa)
-            result = translator.translate(text_to_translate, dest='fa')
+            # Auto-determine target language (same logic as original)
+            if source_lang == 'fa':  # Persian to English
+                target_lang = 'en'
+            elif source_lang == 'en':  # English to Persian
+                target_lang = 'fa'
+            elif source_lang in ['ar', 'ur']:  # Arabic/Urdu to Persian
+                target_lang = 'fa'
+            else:  # Other languages to Persian
+                target_lang = 'fa'
             
-            translated_text = f"""🌐 **ترجمه:**
+            # Translate using Google Translate API
+            translated_text = await translate_text(text_to_translate, target_lang)
+            
+            # Language names
+            lang_names = {
+                'fa': 'فارسی', 'en': 'انگلیسی', 'ar': 'عربی', 'zh': 'چینی',
+                'ru': 'روسی', 'fr': 'فرانسوی', 'de': 'آلمانی', 'es': 'اسپانیایی',
+                'it': 'ایتالیایی', 'ja': 'ژاپنی', 'ko': 'کره‌ای', 'tr': 'ترکی',
+                'hi': 'هیندی', 'ur': 'اردو', 'pt': 'پرتغالی', 'zh-cn': 'چینی'
+            }
+            
+            source_name = lang_names.get(source_lang, source_lang.upper())
+            target_name = lang_names.get(target_lang, target_lang.upper())
+            
+            result_text = f"""🌐 **ترجمه خودکار**
 
-📝 **متن اصلی ({result.src}):**
+📝 **متن اصلی ({source_name}):**
 {text_to_translate}
 
-✅ **ترجمه شده:**
-{result.text}"""
+✅ **ترجمه به {target_name}:**
+{translated_text}"""
             
-            await status_msg.edit_text(translated_text)
+            await status_msg.edit_text(result_text)
             
-        except ImportError:
-            await status_msg.edit_text("❌ کتابخانه googletrans نصب نیست.\nبا دستور زیر نصب کنید:\n`pip install googletrans==4.0.0-rc1`")
         except Exception as trans_error:
             await status_msg.edit_text(f"❌ خطا در ترجمه: {str(trans_error)}")
             
@@ -3677,33 +3811,43 @@ async def set_translation_controller(client, message):
     user_id = client.me.id
     command = message.text.strip().lower()
     try:
+        # Language mapping (same as original system)
         lang_map = {
-            "چینی روشن": "zh",
-            "روسی روشن": "ru",
-            "انگلیسی روشن": "en"
+            "چینی روشن": "zh-cn",  # Chinese simplified
+            "روسی روشن": "ru",     # Russian
+            "انگلیسی روشن": "en"      # English
         }
         off_map = {
-            "چینی خاموش": "zh",
+            "چینی خاموش": "zh-cn",
             "روسی خاموش": "ru",
             "انگلیسی خاموش": "en"
+        }
+        
+        # Language display names
+        lang_names = {
+            "en": "انگلیسی",
+            "ru": "روسی", 
+            "zh-cn": "چینی"
         }
         current_lang = AUTO_TRANSLATE_TARGET.get(user_id)
         feedback_msg = None
 
         if command in lang_map:
             lang = lang_map[command]
+            lang_display = lang_names.get(lang, lang)
             if current_lang != lang:
                 AUTO_TRANSLATE_TARGET[user_id] = lang
-                feedback_msg = f"✅ ترجمه خودکار به زبان {lang} فعال شد."
+                feedback_msg = f"✅ ترجمه خودکار به {lang_display} فعال شد.\n📝 هر پیامی که بفرستی خودکار ترجمه می‌شه."
             else:
-                feedback_msg = f"ℹ️ ترجمه خودکار به زبان {lang} از قبل فعال بود."
+                feedback_msg = f"ℹ️ ترجمه خودکار به {lang_display} از قبل فعال بود."
         elif command in off_map:
             lang_to_check = off_map[command]
+            lang_display = lang_names.get(lang_to_check, lang_to_check)
             if current_lang == lang_to_check:
                 AUTO_TRANSLATE_TARGET.pop(user_id, None)
-                feedback_msg = f"✅ ترجمه خودکار به زبان {lang_to_check} غیرفعال شد."
+                feedback_msg = f"✅ ترجمه خودکار به {lang_display} غیرفعال شد."
             else:
-                feedback_msg = f"ℹ️ ترجمه خودکار به زبان {lang_to_check} فعال نبود."
+                feedback_msg = f"ℹ️ ترجمه خودکار به {lang_display} فعال نبود."
         elif command == "ترجمه خاموش":
             if current_lang is not None:
                 AUTO_TRANSLATE_TARGET.pop(user_id, None)
@@ -3924,18 +4068,43 @@ async def clean_messages_controller(client, message):
         await message.delete()
         
         deleted = 0
+        messages_to_delete = []
+        
         try:
-            async for msg in client.get_chat_history(message.chat.id, limit=count):
+            # Collect messages first
+            async for msg in client.get_chat_history(message.chat.id, limit=count * 2):  # Get more to account for others' messages
                 if msg.from_user and msg.from_user.id == user_id:
-                    await msg.delete()
-                    deleted += 1
-                    await asyncio.sleep(0.1)
+                    messages_to_delete.append(msg.id)
+                    if len(messages_to_delete) >= count:
+                        break
+            
+            # Batch delete for speed
+            if messages_to_delete:
+                try:
+                    # Try batch delete first (faster)
+                    await client.delete_messages(message.chat.id, messages_to_delete)
+                    deleted = len(messages_to_delete)
+                except Exception:
+                    # Fallback to individual delete
+                    for msg_id in messages_to_delete:
+                        try:
+                            await client.delete_messages(message.chat.id, msg_id)
+                            deleted += 1
+                        except:
+                            pass
+                        await asyncio.sleep(0.05)  # Faster than 0.1
+                        
         except Exception as e_clean_history:
             logging.warning(f"Error getting chat history for clean: {e_clean_history}")
         
-        confirm_msg = await client.send_message(message.chat.id, f'{deleted} پیام حذف شد')
-        await asyncio.sleep(3)
-        await confirm_msg.delete()
+        # Quick status message that auto-deletes
+        if deleted > 0:
+            confirm_msg = await client.send_message(message.chat.id, f'✅ {deleted} پیام حذف شد')
+            await asyncio.sleep(2)
+            try:
+                await confirm_msg.delete()
+            except:
+                pass
     except Exception as e:
         await message.edit_text(f"خطا در حذف پیام‌ها: {e}")
 
