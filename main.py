@@ -180,6 +180,16 @@ RECORD_VOICE_STATUS = {}
 UPLOAD_PHOTO_STATUS = {}
 WATCH_GIF_STATUS = {}
 PV_LOCK_STATUS = {}
+PV_GIF_LOCK_STATUS = {}
+PV_PHOTO_LOCK_STATUS = {}
+PV_VIDEO_LOCK_STATUS = {}
+PV_VOICE_LOCK_STATUS = {}
+PV_STICKER_LOCK_STATUS = {}
+PV_DOCUMENT_LOCK_STATUS = {}
+PV_AUDIO_LOCK_STATUS = {}
+PV_VIDEO_NOTE_LOCK_STATUS = {}
+PV_CONTACT_LOCK_STATUS = {}
+PV_LOCATION_LOCK_STATUS = {}
 SECRET_SAVE_STATUS = {}  # {user_id: bool} - ذخیره مخفی
 SECRET_SAVE_PROCESSED = {}  # {user_id: set of (chat_id, message_id)} - پیام‌های ذخیره شده
 ORIGINAL_NAMES = {}  # {user_id: str} - نام اصلی کاربر برای ساعت
@@ -245,6 +255,16 @@ async def save_settings_to_db(user_id: int):
             'first_comment_text': FIRST_COMMENT_TEXT.get(user_id, "اول! 🔥"),
             'first_comment_groups': list(FIRST_COMMENT_GROUPS.get(user_id, set())),
             'auto_save_view_once': AUTO_SAVE_VIEW_ONCE.get(user_id, False),
+            'pv_gif_lock': PV_GIF_LOCK_STATUS.get(user_id, False),
+            'pv_photo_lock': PV_PHOTO_LOCK_STATUS.get(user_id, False),
+            'pv_video_lock': PV_VIDEO_LOCK_STATUS.get(user_id, False),
+            'pv_voice_lock': PV_VOICE_LOCK_STATUS.get(user_id, False),
+            'pv_sticker_lock': PV_STICKER_LOCK_STATUS.get(user_id, False),
+            'pv_document_lock': PV_DOCUMENT_LOCK_STATUS.get(user_id, False),
+            'pv_audio_lock': PV_AUDIO_LOCK_STATUS.get(user_id, False),
+            'pv_video_note_lock': PV_VIDEO_NOTE_LOCK_STATUS.get(user_id, False),
+            'pv_contact_lock': PV_CONTACT_LOCK_STATUS.get(user_id, False),
+            'pv_location_lock': PV_LOCATION_LOCK_STATUS.get(user_id, False),
             'typing_mode': TYPING_MODE_STATUS.get(user_id, False),
             'secretary_msg': CUSTOM_SECRETARY_MESSAGES.get(user_id, DEFAULT_SECRETARY_MESSAGE),
             'enemy_list': list(ENEMY_LIST.get(user_id, set())),
@@ -285,6 +305,16 @@ async def load_user_settings_from_db(user_id: int):
         FIRST_COMMENT_STATUS[user_id] = settings.get('first_comment', FIRST_COMMENT_STATUS.get(user_id, False))
         FIRST_COMMENT_TEXT[user_id] = settings.get('first_comment_text', FIRST_COMMENT_TEXT.get(user_id, "اول! 🔥"))
         AUTO_SAVE_VIEW_ONCE[user_id] = settings.get('auto_save_view_once', AUTO_SAVE_VIEW_ONCE.get(user_id, False))
+        PV_GIF_LOCK_STATUS[user_id] = settings.get('pv_gif_lock', PV_GIF_LOCK_STATUS.get(user_id, False))
+        PV_PHOTO_LOCK_STATUS[user_id] = settings.get('pv_photo_lock', PV_PHOTO_LOCK_STATUS.get(user_id, False))
+        PV_VIDEO_LOCK_STATUS[user_id] = settings.get('pv_video_lock', PV_VIDEO_LOCK_STATUS.get(user_id, False))
+        PV_VOICE_LOCK_STATUS[user_id] = settings.get('pv_voice_lock', PV_VOICE_LOCK_STATUS.get(user_id, False))
+        PV_STICKER_LOCK_STATUS[user_id] = settings.get('pv_sticker_lock', PV_STICKER_LOCK_STATUS.get(user_id, False))
+        PV_DOCUMENT_LOCK_STATUS[user_id] = settings.get('pv_document_lock', PV_DOCUMENT_LOCK_STATUS.get(user_id, False))
+        PV_AUDIO_LOCK_STATUS[user_id] = settings.get('pv_audio_lock', PV_AUDIO_LOCK_STATUS.get(user_id, False))
+        PV_VIDEO_NOTE_LOCK_STATUS[user_id] = settings.get('pv_video_note_lock', PV_VIDEO_NOTE_LOCK_STATUS.get(user_id, False))
+        PV_CONTACT_LOCK_STATUS[user_id] = settings.get('pv_contact_lock', PV_CONTACT_LOCK_STATUS.get(user_id, False))
+        PV_LOCATION_LOCK_STATUS[user_id] = settings.get('pv_location_lock', PV_LOCATION_LOCK_STATUS.get(user_id, False))
         TYPING_MODE_STATUS[user_id] = settings.get('typing_mode', TYPING_MODE_STATUS.get(user_id, False))
         CUSTOM_SECRETARY_MESSAGES[user_id] = settings.get('secretary_msg', CUSTOM_SECRETARY_MESSAGES.get(user_id, DEFAULT_SECRETARY_MESSAGE))
 
@@ -1730,7 +1760,98 @@ async def pv_lock_controller(client, message):
         except Exception:
             pass
 
-            
+
+async def pv_media_lock_handler(client, message):
+    owner_user_id = client.me.id
+    if not getattr(message, "chat", None) or getattr(message.chat, "type", None) != ChatType.PRIVATE:
+        return
+
+    try:
+        if getattr(message, "animation", None) and PV_GIF_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "photo", None) and PV_PHOTO_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "video", None) and PV_VIDEO_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "voice", None) and PV_VOICE_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "sticker", None) and PV_STICKER_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "document", None) and PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "audio", None) and PV_AUDIO_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "video_note", None) and PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "contact", None) and PV_CONTACT_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+        if getattr(message, "location", None) and PV_LOCATION_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            return
+    except FloodWait as e:
+        await asyncio.sleep(e.value + 1)
+    except MessageIdInvalid:
+        pass
+    except Exception as e:
+        if "Message to delete not found" not in str(e):
+            logging.warning(f"PV Media Lock: Could not delete message {getattr(message, 'id', 'N/A')} for user {owner_user_id}: {e}")
+
+async def pv_media_lock_controller(client, message):
+    user_id = client.me.id
+    command = message.text.strip()
+
+    mapping = {
+        "قفل گیف روشن": (PV_GIF_LOCK_STATUS, True, "✅ قفل گیف در PV فعال شد. هر گیفی ارسال شود حذف می‌شود."),
+        "قفل گیف خاموش": (PV_GIF_LOCK_STATUS, False, "❌ قفل گیف در PV غیرفعال شد."),
+        "قفل عکس روشن": (PV_PHOTO_LOCK_STATUS, True, "✅ قفل عکس در PV فعال شد. هر عکسی ارسال شود حذف می‌شود."),
+        "قفل عکس خاموش": (PV_PHOTO_LOCK_STATUS, False, "❌ قفل عکس در PV غیرفعال شد."),
+        "قفل ویدیو روشن": (PV_VIDEO_LOCK_STATUS, True, "✅ قفل ویدیو در PV فعال شد. هر ویدیویی ارسال شود حذف می‌شود."),
+        "قفل ویدیو خاموش": (PV_VIDEO_LOCK_STATUS, False, "❌ قفل ویدیو در PV غیرفعال شد."),
+        "قفل ویس روشن": (PV_VOICE_LOCK_STATUS, True, "✅ قفل ویس در PV فعال شد. هر ویسی ارسال شود حذف می‌شود."),
+        "قفل ویس خاموش": (PV_VOICE_LOCK_STATUS, False, "❌ قفل ویس در PV غیرفعال شد."),
+        "قفل استیکر روشن": (PV_STICKER_LOCK_STATUS, True, "✅ قفل استیکر در PV فعال شد. هر استیکری ارسال شود حذف می‌شود."),
+        "قفل استیکر خاموش": (PV_STICKER_LOCK_STATUS, False, "❌ قفل استیکر در PV غیرفعال شد."),
+        "قفل فایل روشن": (PV_DOCUMENT_LOCK_STATUS, True, "✅ قفل فایل در PV فعال شد. هر فایلی ارسال شود حذف می‌شود."),
+        "قفل فایل خاموش": (PV_DOCUMENT_LOCK_STATUS, False, "❌ قفل فایل در PV غیرفعال شد."),
+        "قفل موزیک روشن": (PV_AUDIO_LOCK_STATUS, True, "✅ قفل موزیک در PV فعال شد. هر موزیکی ارسال شود حذف می‌شود."),
+        "قفل موزیک خاموش": (PV_AUDIO_LOCK_STATUS, False, "❌ قفل موزیک در PV غیرفعال شد."),
+        "قفل ویدیو نوت روشن": (PV_VIDEO_NOTE_LOCK_STATUS, True, "✅ قفل ویدیو نوت در PV فعال شد. هر ویدیو نوت ارسال شود حذف می‌شود."),
+        "قفل ویدیو نوت خاموش": (PV_VIDEO_NOTE_LOCK_STATUS, False, "❌ قفل ویدیو نوت در PV غیرفعال شد."),
+        "قفل کانتکت روشن": (PV_CONTACT_LOCK_STATUS, True, "✅ قفل کانتکت در PV فعال شد. هر کانتکتی ارسال شود حذف می‌شود."),
+        "قفل کانتکت خاموش": (PV_CONTACT_LOCK_STATUS, False, "❌ قفل کانتکت در PV غیرفعال شد."),
+        "قفل لوکیشن روشن": (PV_LOCATION_LOCK_STATUS, True, "✅ قفل لوکیشن در PV فعال شد. هر لوکیشنی ارسال شود حذف می‌شود."),
+        "قفل لوکیشن خاموش": (PV_LOCATION_LOCK_STATUS, False, "❌ قفل لوکیشن در PV غیرفعال شد."),
+    }
+
+    if command not in mapping:
+        return
+
+    try:
+        store, value, text = mapping[command]
+        store[user_id] = value
+        await save_settings_to_db(user_id)
+        await message.edit_text(text)
+    except FloodWait as e:
+        await asyncio.sleep(e.value + 1)
+    except MessageNotModified:
+        pass
+    except Exception as e:
+        logging.error(f"PV Media Lock Controller: Error for user {user_id}: {e}", exc_info=True)
+        try:
+            await message.edit_text("⚠️ خطا در تنظیم قفل مدیا")
+        except Exception:
+            pass
+
+
 async def copy_profile_controller(client, message):
     user_id = client.me.id
     command = message.text.strip()
@@ -2223,6 +2344,16 @@ async def help_controller(client, message):
 ┏━━━━━━━━━ 🛡 امنیت و منشی 🛡 ━━━━━━━━━┓
 ┃ 🔐 `پیوی قفل` ➜ قفل پیام‌های خصوصی
 ┃ 🔓 `پیوی باز` ➜ باز کردن پیام‌ها
+┃ 🎬 `قفل گیف روشن/خاموش` ➜ حذف گیف‌های PV
+┃ 📸 `قفل عکس روشن/خاموش` ➜ حذف عکس‌های PV
+┃ 🎞 `قفل ویدیو روشن/خاموش` ➜ حذف ویدیوهای PV
+┃ 🎙 `قفل ویس روشن/خاموش` ➜ حذف ویس‌های PV
+┃ 🧷 `قفل استیکر روشن/خاموش` ➜ حذف استیکرهای PV
+┃ 📁 `قفل فایل روشن/خاموش` ➜ حذف فایل‌های PV
+┃ 🎵 `قفل موزیک روشن/خاموش` ➜ حذف موزیک‌های PV
+┃ 🎥 `قفل ویدیو نوت روشن/خاموش` ➜ حذف ویدیو نوت‌های PV
+┃ 👤 `قفل کانتکت روشن/خاموش` ➜ حذف کانتکت‌های PV
+┃ 📍 `قفل لوکیشن روشن/خاموش` ➜ حذف لوکیشن‌های PV
 ┃ 📢 `منشی روشن/خاموش` ➜ فعال/غیرفعال
 ┃ 📝 `منشی متن [متن]` ➜ تنظیم پیام
 ┃ 🤖 `منشی خودکار روشن/خاموش` ➜ منشی AI
@@ -2457,13 +2588,34 @@ async def auto_save_view_once_handler(client, message):
         user_id = client.me.id
         if not AUTO_SAVE_VIEW_ONCE.get(user_id, False):
             return
+        if not getattr(message, "chat", None) or getattr(message.chat, "type", None) != ChatType.PRIVATE:
+            return
         if not getattr(message, "media", None):
+            return
+
+        is_view_once = False
+        try:
+            if bool(getattr(message, "view_once", False)):
+                is_view_once = True
+            elif bool(getattr(message, "has_ttl", False)):
+                is_view_once = True
+            elif bool(getattr(message, "self_destruct", False)):
+                is_view_once = True
+            else:
+                ttl_seconds = getattr(message, "ttl_seconds", None)
+                if isinstance(ttl_seconds, int) and ttl_seconds > 0:
+                    is_view_once = True
+        except Exception:
+            is_view_once = False
+
+        if not is_view_once:
             return
         try:
             file_path = await message.download()
         except Exception as dl_err:
             logging.error(f"Auto save view once: download failed for user {user_id}: {dl_err}")
             return
+
         if not file_path:
             return
         try:
@@ -2509,29 +2661,27 @@ async def secret_save_raw_update_handler(client, update, users, chats):
         if not SECRET_SAVE_STATUS.get(user_id, False):
             return
 
-        if not isinstance(update, raw.types.UpdateMessageReactions):
+        # Pyrogram raw updates can vary by version and chat type.
+        allowed_types = (raw.types.UpdateMessageReactions,)
+        if hasattr(raw.types, "UpdateMessageReactionsFrom"):
+            allowed_types = allowed_types + (raw.types.UpdateMessageReactionsFrom,)
+        if hasattr(raw.types, "UpdateMessageReaction"):
+            allowed_types = allowed_types + (raw.types.UpdateMessageReaction,)
+
+        if not isinstance(update, allowed_types):
             return
-
-        reactions_obj = getattr(update, "reactions", None)
-        recent = getattr(reactions_obj, "recent_reactions", None) if reactions_obj is not None else None
-
-        # If recent reactions are available, ensure this update includes a reaction from the current user.
-        if recent:
-            mine = False
-            try:
-                for rr in recent:
-                    peer_id = getattr(rr, "peer_id", None)
-                    if isinstance(peer_id, raw.types.PeerUser) and getattr(peer_id, "user_id", None) == user_id:
-                        mine = True
-                        break
-            except Exception:
-                mine = False
-            if not mine:
-                return
 
         peer = getattr(update, "peer", None)
         msg_id = getattr(update, "msg_id", None)
-        logging.info(f"Secret save: reaction update received peer={type(peer).__name__} msg_id={msg_id} recent_reactions={'yes' if recent else 'no'}")
+        if msg_id is None:
+            msg_id = getattr(update, "message_id", None)
+
+        # NOTE: We intentionally do NOT require that the reaction is by "me".
+        # In many Telegram/Pyrogram combinations, recent_reactions is missing/incomplete.
+        reactions_obj = getattr(update, "reactions", None)
+        logging.info(
+            f"Secret save: reaction update received type={type(update).__name__} peer={type(peer).__name__} msg_id={msg_id}"
+        )
 
         if not msg_id:
             return
@@ -3038,6 +3188,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         # --- Add Handlers ---
         # Group -5: Highest priority for lock/blocking actions
         client.add_handler(MessageHandler(pv_lock_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-5)
+        client.add_handler(MessageHandler(pv_media_lock_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-5)
 
         # Group -4: Auto seen, happens before general processing
         client.add_handler(MessageHandler(auto_seen_handler, filters.private & ~filters.me), group=-4)
@@ -3059,8 +3210,10 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
         client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
         client.add_handler(MessageHandler(pv_lock_controller, cmd_filters & filters.regex("^(پیوی قفل|پیوی باز)$")))
+        client.add_handler(MessageHandler(pv_media_lock_controller, cmd_filters & filters.regex("^(قفل گیف روشن|قفل گیف خاموش|قفل عکس روشن|قفل عکس خاموش|قفل ویدیو روشن|قفل ویدیو خاموش|قفل ویس روشن|قفل ویس خاموش|قفل استیکر روشن|قفل استیکر خاموش|قفل فایل روشن|قفل فایل خاموش|قفل موزیک روشن|قفل موزیک خاموش|قفل ویدیو نوت روشن|قفل ویدیو نوت خاموش|قفل کانتکت روشن|قفل کانتکت خاموش|قفل لوکیشن روشن|قفل لوکیشن خاموش)$")))
         client.add_handler(MessageHandler(font_controller, cmd_filters & filters.regex(r"^(فونت|فونت \d+)$")))
         client.add_handler(MessageHandler(clock_controller, cmd_filters & filters.regex("^(ساعت روشن|ساعت خاموش)$")))
+        
         client.add_handler(MessageHandler(set_enemy_controller, cmd_filters & filters.reply & filters.regex("^تنظیم دشمن$"))) # Requires reply
         client.add_handler(MessageHandler(delete_enemy_controller, cmd_filters & filters.reply & filters.regex("^حذف دشمن$"))) # Requires reply
         client.add_handler(MessageHandler(clear_enemy_list_controller, cmd_filters & filters.regex("^پاکسازی لیست دشمن$")))
@@ -3230,15 +3383,15 @@ async def fun_animation_controller(client, message):
         animation_type = command.split(' ', 1)[1] if len(command.split(' ')) > 1 else 'love'
         
         if animation_type == 'love':
-            emoticons = ['*','*','*','*','*','*','*','*','*','*']
+            emoticons = ['❤️', '🧡', '💛', '💚', '💙', '💜', '🤍', '🤎', '💖', '💘', '💕', '💞', '💓', '💗']
         elif animation_type == 'star':
-            emoticons = ['*','*','*','*','*','*']
+            emoticons = ['⭐', '🌟', '✨', '💫', '✴️', '🔆']
         elif animation_type == 'snow':
-            emoticons = ['*','*','*']
+            emoticons = ['❄️', '🌨️', '☃️', '⛄', '❄️', '🌨️']
         elif animation_type == 'oclock':
-            emoticons = ['*','*','*','*','*','*','*','*','*','*','*','*']
+            emoticons = ['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚']
         else:
-            emoticons = ['*','*','*','*','*','*','*','*','*','*']
+            emoticons = ['✨', '💫', '⭐', '🌟', '✨', '💫', '⭐', '🌟']
         
         random.shuffle(emoticons)
         for emoji in emoticons:
@@ -3247,11 +3400,16 @@ async def fun_animation_controller(client, message):
 
 async def heart_animation_controller(client, message):
     """Heart animation"""
-    for x in range(1, 4):
+    try:
         for i in range(1, 11):
-            await message.edit_text('➣ ' + str(x) + ' ❦' * i + ' | ' + str(10 * i) + '%')
-            await asyncio.sleep(0.3)
-
+            await message.edit_text('❤️' * i + '🖤' * (10 - i) + f"  {i*10}%")
+            await asyncio.sleep(0.25)
+        for i in range(10, 0, -1):
+            await message.edit_text('❤️' * i + '🖤' * (10 - i) + f"  {i*10}%")
+            await asyncio.sleep(0.25)
+    except Exception:
+        # If edit fails (message deleted, etc.), just stop animation
+        return
 
 async def crash_management_controller(client, message):
     """Manage crash list"""
