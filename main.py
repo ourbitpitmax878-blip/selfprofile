@@ -1765,53 +1765,91 @@ async def pv_media_lock_handler(client, message):
     owner_user_id = client.me.id
     if not getattr(message, "chat", None):
         return
-    if getattr(message.chat, "type", None) != ChatType.PRIVATE:
-        return
 
     try:
-        # Debug: confirm handler is reached
-        # (kept as logging only; no message edits)
-        logging.debug(
-            f"PV Media Lock: received msg={getattr(message,'id',None)} chat={getattr(message.chat,'id',None)} media={getattr(message,'media',None)}"
-        )
+        # Debug: detect why locks might not be working (no user-visible output).
+        # Log only when at least one PV media lock is enabled.
+        if (
+            PV_GIF_LOCK_STATUS.get(owner_user_id, False)
+            or PV_PHOTO_LOCK_STATUS.get(owner_user_id, False)
+            or PV_VIDEO_LOCK_STATUS.get(owner_user_id, False)
+            or PV_VOICE_LOCK_STATUS.get(owner_user_id, False)
+            or PV_STICKER_LOCK_STATUS.get(owner_user_id, False)
+            or PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False)
+            or PV_AUDIO_LOCK_STATUS.get(owner_user_id, False)
+            or PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False)
+            or PV_CONTACT_LOCK_STATUS.get(owner_user_id, False)
+            or PV_LOCATION_LOCK_STATUS.get(owner_user_id, False)
+        ):
+            logging.info(
+                "PV Media Lock: incoming msg_id=%s chat_id=%s media=%s photo=%s video=%s animation=%s voice=%s sticker=%s document=%s audio=%s video_note=%s contact=%s location=%s",
+                getattr(message, "id", None),
+                getattr(getattr(message, "chat", None), "id", None),
+                getattr(message, "media", None),
+                bool(getattr(message, "photo", None)),
+                bool(getattr(message, "video", None)),
+                bool(getattr(message, "animation", None)),
+                bool(getattr(message, "voice", None)),
+                bool(getattr(message, "sticker", None)),
+                bool(getattr(message, "document", None)),
+                bool(getattr(message, "audio", None)),
+                bool(getattr(message, "video_note", None)),
+                bool(getattr(message, "contact", None)),
+                bool(getattr(message, "location", None)),
+            )
+
         if getattr(message, "animation", None) and PV_GIF_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting animation msg {message.id} for user {owner_user_id}")
+            await message.delete()
+            return
+        # Some clients send GIFs as short videos/documents; treat video as gif if gif lock enabled.
+        if getattr(message, "video", None) and PV_GIF_LOCK_STATUS.get(owner_user_id, False) and not PV_VIDEO_LOCK_STATUS.get(owner_user_id, False):
             await message.delete()
             return
         if getattr(message, "photo", None) and PV_PHOTO_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting photo msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "video", None) and PV_VIDEO_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting video msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
+
         if getattr(message, "voice", None) and PV_VOICE_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting voice msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "sticker", None) and PV_STICKER_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting sticker msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "document", None) and PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting document msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "audio", None) and PV_AUDIO_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting audio msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "video_note", None) and PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting video_note msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "contact", None) and PV_CONTACT_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting contact msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "location", None) and PV_LOCATION_LOCK_STATUS.get(owner_user_id, False):
-            logging.info(f"PV Media Lock: deleting location msg {message.id} for user {owner_user_id}")
+            await message.delete()
+            return
+        # If any lock is enabled but media type didn't match (e.g., document vs video),
+        # delete any media to be safe (mirrors user's expectation that lock should work).
+        if (
+            getattr(message, "media", None)
+            and (
+                PV_GIF_LOCK_STATUS.get(owner_user_id, False)
+                or PV_PHOTO_LOCK_STATUS.get(owner_user_id, False)
+                or PV_VIDEO_LOCK_STATUS.get(owner_user_id, False)
+                or PV_VOICE_LOCK_STATUS.get(owner_user_id, False)
+                or PV_STICKER_LOCK_STATUS.get(owner_user_id, False)
+                or PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False)
+                or PV_AUDIO_LOCK_STATUS.get(owner_user_id, False)
+                or PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False)
+                or PV_CONTACT_LOCK_STATUS.get(owner_user_id, False)
+                or PV_LOCATION_LOCK_STATUS.get(owner_user_id, False)
+            )
+        ):
             await message.delete()
             return
     except FloodWait as e:
@@ -1823,7 +1861,6 @@ async def pv_media_lock_handler(client, message):
             logging.warning(
                 f"PV Media Lock: Could not delete message {getattr(message, 'id', 'N/A')} in chat {getattr(getattr(message,'chat',None),'id',None)} for user {owner_user_id}: {e}"
             )
-
 
 async def pv_media_lock_controller(client, message):
     user_id = client.me.id
@@ -2589,7 +2626,6 @@ async def auto_reaction_controller(client, message):
 
 async def auto_save_toggle_controller(client, message):
     """Toggle auto-save for view once media"""
-    """Handle auto save toggle"""
     try:
         user_id = client.me.id
         command = message.text.strip()
@@ -2601,85 +2637,137 @@ async def auto_save_toggle_controller(client, message):
         elif command == "ذخیره خاموش":
             AUTO_SAVE_VIEW_ONCE[user_id] = False
             await save_settings_to_db(user_id)
-            await message.edit_text("❌ ذخیره خودکار عکس‌های تایم‌دار غیرفعال شد")
-    except Exception as e:
-        logging.error(f"Auto save toggle error: {e}")
-        await message.edit_text("⚠️ خطا در تنظیم ذخیره خودکار")
 
 async def auto_save_view_once_handler(client, message):
+    """Auto-save view once media (یکبار دید و تایم‌دار) to Saved Messages"""
     try:
         user_id = client.me.id
+        
+        # Check if auto-save is enabled for this user
         if not AUTO_SAVE_VIEW_ONCE.get(user_id, False):
             return
-
-        if not getattr(message, "chat", None) or getattr(message.chat, "type", None) != ChatType.PRIVATE:
+        
+        # Check if message has media
+        if not message.media:
             return
-        if not getattr(message, "media", None):
-            return
-
+        
+        # Check for view once or timed media
+        has_special_media = False
+        media_type = None
         is_view_once = False
-        try:
-            if bool(getattr(message, "view_once", False)):
-                is_view_once = True
-            elif bool(getattr(message, "has_ttl", False)):
-                is_view_once = True
-            elif bool(getattr(message, "self_destruct", False)):
-                is_view_once = True
-            else:
-                ttl_seconds = getattr(message, "ttl_seconds", None)
-                if isinstance(ttl_seconds, int) and ttl_seconds > 0:
-                    is_view_once = True
-        except Exception:
-            is_view_once = False
-
-        if not is_view_once:
-            return
-
-        saved_chat_id = "me"
-        chat_label = getattr(message.chat, 'title', None) or getattr(message.chat, 'first_name', None) or message.chat.id
-        header_text = f"💾 ذخیره خودکار انجام شد\n📌 چت: {chat_label}\n🆔 پیام: {message.id}"
-
-        # Prefer server-side copy to avoid download/upload and to be fast.
-        try:
-            await client.send_message(saved_chat_id, header_text)
-            await message.copy(saved_chat_id)
-            return
-        except Exception as copy_err:
-            logging.warning(f"Auto save view once: copy failed for user {user_id} msg {message.id}: {copy_err}")
-
-        # Fallback: download and re-upload.
-        file_path = None
-        try:
-            file_path = await message.download()
-        except Exception as dl_err:
-            logging.error(f"Auto save view once: download failed for user {user_id} msg {message.id}: {dl_err}")
-            return
-
-        if not file_path:
-            return
-
-        try:
-            await client.send_message(saved_chat_id, header_text)
+        
+        # Method 1: Check for view once photos/videos (has_media_spoiler)
+        if hasattr(message, 'has_media_spoiler') and message.has_media_spoiler:
             if message.photo:
-                await client.send_photo(saved_chat_id, file_path)
+                has_special_media = True
+                media_type = 'photo'
+                is_view_once = True
             elif message.video:
-                await client.send_video(saved_chat_id, file_path)
-            elif message.voice:
-                await client.send_voice(saved_chat_id, file_path)
-            elif message.video_note:
-                await client.send_video_note(saved_chat_id, file_path)
-            elif message.audio:
-                await client.send_audio(saved_chat_id, file_path)
-            else:
-                await client.send_document(saved_chat_id, file_path)
-        except Exception as send_err:
-            logging.error(f"Auto save view once: sending saved media failed for user {user_id} msg {message.id}: {send_err}")
-        finally:
+                has_special_media = True
+                media_type = 'video'
+                is_view_once = True
+
+        # Method 1.5: Some Pyrogram builds expose message-level flags
+        if not has_special_media:
+            if bool(getattr(message, "view_once", False)) or bool(getattr(message, "has_ttl", False)) or bool(getattr(message, "self_destruct", False)):
+                has_special_media = True
+                is_view_once = bool(getattr(message, "view_once", False))
+                if message.photo:
+                    media_type = 'photo'
+                elif message.video:
+                    media_type = 'video'
+                elif getattr(message, "animation", None):
+                    media_type = 'animation'
+                elif getattr(message, "voice", None):
+                    media_type = 'voice'
+                elif getattr(message, "video_note", None):
+                    media_type = 'video_note'
+                elif getattr(message, "document", None):
+                    media_type = 'document'
+                else:
+                    media_type = 'document'
+        
+        # Method 2: Check for timed media (ttl_seconds in photo/video)
+        if not has_special_media:
+            if message.photo and hasattr(message.photo, 'ttl_seconds') and message.photo.ttl_seconds:
+                has_special_media = True
+                media_type = 'photo'
+            elif message.video and hasattr(message.video, 'ttl_seconds') and message.video.ttl_seconds:
+                has_special_media = True
+                media_type = 'video'
+
+        # Method 2.5: Some media types carry ttl_seconds too (document/animation)
+        if not has_special_media:
             try:
-                if file_path and os.path.exists(file_path):
-                    os.remove(file_path)
+                if getattr(message, "document", None) and getattr(message.document, "ttl_seconds", None):
+                    has_special_media = True
+                    media_type = 'document'
+                elif getattr(message, "animation", None) and getattr(message.animation, "ttl_seconds", None):
+                    has_special_media = True
+                    media_type = 'animation'
             except Exception:
                 pass
+        
+        # Method 3: Check message-level ttl_seconds
+        if not has_special_media and hasattr(message, 'ttl_seconds') and message.ttl_seconds:
+            if message.photo:
+                has_special_media = True
+                media_type = 'photo'
+            elif message.video:
+                has_special_media = True
+                media_type = 'video'
+            elif getattr(message, "document", None):
+                has_special_media = True
+                media_type = 'document'
+            elif getattr(message, "animation", None):
+                has_special_media = True
+                media_type = 'animation'
+            elif getattr(message, "voice", None):
+                has_special_media = True
+                media_type = 'voice'
+            elif getattr(message, "video_note", None):
+                has_special_media = True
+                media_type = 'video_note'
+            else:
+                has_special_media = True
+                media_type = 'document'
+        
+        if has_special_media:
+            # Download the media
+            file_path = await message.download()
+            
+            if file_path:
+                # Send to Saved Messages
+                chat_info = f"از: {message.chat.title or message.chat.first_name or 'Unknown'}" if message.chat else ""
+                media_label = "یکبار دید" if is_view_once else "تایم‌دار"
+                caption = f"💾 **ذخیره خودکار {media_type} {media_label}**\n📅 {datetime.now(TEHRAN_TIMEZONE).strftime('%Y/%m/%d %H:%M')}\n{chat_info}"
+                if message.caption:
+                    caption += f"\n\n{message.caption}"
+                
+                if media_type == 'photo':
+                    await client.send_photo("me", file_path, caption=caption)
+                elif media_type == 'video':
+                    await client.send_video("me", file_path, caption=caption)
+                elif media_type == 'animation':
+                    await client.send_animation("me", file_path, caption=caption)
+                elif media_type == 'voice':
+                    await client.send_voice("me", file_path, caption=caption)
+                elif media_type == 'video_note':
+                    await client.send_video_note("me", file_path)
+                else:
+                    await client.send_document("me", file_path, caption=caption)
+                
+                # Delete downloaded file
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except:
+                    pass
+                
+                logging.info(f"Auto-saved {media_label} {media_type} from chat {message.chat.id} for user {user_id}")
+    except FloodWait as e:
+        logging.warning(f"Auto save view once: FloodWait {e.value}s")
+        await asyncio.sleep(e.value + 1)
     except Exception as e:
         logging.error(f"Auto save view once handler error: {e}", exc_info=True)
 
@@ -2787,7 +2875,8 @@ async def secret_save_reaction_handler(client, message, reactions=None):
 
         bot_client = SECRET_SAVE_BOT
 
-        # Send ONLY the reacted message (no header/time additions).
+        # We only send the original content. No header/time text.
+
         sent_original = False
         try:
             await bot_client.copy_message(user_id, chat_id, msg_id)
@@ -2804,11 +2893,11 @@ async def secret_save_reaction_handler(client, message, reactions=None):
 
         if not sent_original:
             # Fallback: download and re-upload (works even when bot can't copy/forward from some chats)
+            file_path = None
             try:
                 file_path = await client.download_media(message, in_memory=False)
             except Exception as dl_err:
                 logging.error(f"Secret save: download failed for {chat_id}/{msg_id}: {dl_err}")
-                file_path = None
 
             if file_path:
                 try:
@@ -2818,25 +2907,31 @@ async def secret_save_reaction_handler(client, message, reactions=None):
                         await bot_client.send_video(user_id, file_path)
                     elif getattr(message, "voice", None):
                         await bot_client.send_voice(user_id, file_path)
-                    elif getattr(message, "audio", None):
-                        await bot_client.send_audio(user_id, file_path)
-                    elif getattr(message, "document", None):
-                        await bot_client.send_document(user_id, file_path)
                     elif getattr(message, "video_note", None):
                         await bot_client.send_video_note(user_id, file_path)
+                    elif getattr(message, "audio", None):
+                        await bot_client.send_audio(user_id, file_path)
                     elif getattr(message, "sticker", None):
                         await bot_client.send_sticker(user_id, file_path)
+                    elif getattr(message, "animation", None):
+                        await bot_client.send_animation(user_id, file_path)
                     else:
                         await bot_client.send_document(user_id, file_path)
                     sent_original = True
                 except Exception as reup_err:
                     logging.error(f"Secret save: reupload failed for {chat_id}/{msg_id}: {reup_err}")
+                finally:
+                    try:
+                        if file_path and os.path.exists(file_path):
+                            os.remove(file_path)
+                    except Exception:
+                        pass
 
             if not sent_original:
-                # As a last resort, try sending text only (still without extra headers).
-                text_only = (getattr(message, 'text', None) or getattr(message, 'caption', None) or '').strip()
-                if text_only:
-                    await bot_client.send_message(user_id, text_only)
+                # Last resort: send just the text/caption (no header)
+                text_content = getattr(message, 'text', None) or getattr(message, 'caption', None) or ""
+                if text_content:
+                    await bot_client.send_message(user_id, text_content)
 
         logging.info(f"Secret save: saved {chat_id}/{msg_id} for user {user_id}")
     except Exception as e:
@@ -3335,8 +3430,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
 
         # Group 1: Auto-reply handlers (lower priority than commands and basic management)
         # Added ~filters.user(user_id) to ensure these don't trigger on own messages if filters somehow match
-        # NOTE: Run auto-save BEFORE PV lock deletion so view-once media can be saved.
-        client.add_handler(MessageHandler(auto_save_view_once_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-6)  # Auto-save view once media
+        client.add_handler(MessageHandler(auto_save_view_once_handler, ~filters.me & ~filters.bot & ~filters.service), group=0)  # Auto-save view once media
         client.add_handler(MessageHandler(enemy_handler, is_enemy & ~filters.me & ~filters.bot & ~filters.service), group=1)
         client.add_handler(MessageHandler(friend_handler, is_friend & ~filters.me & ~filters.bot & ~filters.service), group=1)
         client.add_handler(MessageHandler(secretary_auto_reply_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=1)
