@@ -1765,36 +1765,53 @@ async def pv_media_lock_handler(client, message):
     owner_user_id = client.me.id
     if not getattr(message, "chat", None):
         return
+    if getattr(message.chat, "type", None) != ChatType.PRIVATE:
+        return
 
     try:
+        # Debug: confirm handler is reached
+        # (kept as logging only; no message edits)
+        logging.debug(
+            f"PV Media Lock: received msg={getattr(message,'id',None)} chat={getattr(message.chat,'id',None)} media={getattr(message,'media',None)}"
+        )
         if getattr(message, "animation", None) and PV_GIF_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting animation msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "photo", None) and PV_PHOTO_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting photo msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "video", None) and PV_VIDEO_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting video msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "voice", None) and PV_VOICE_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting voice msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "sticker", None) and PV_STICKER_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting sticker msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "document", None) and PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting document msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "audio", None) and PV_AUDIO_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting audio msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "video_note", None) and PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting video_note msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "contact", None) and PV_CONTACT_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting contact msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
         if getattr(message, "location", None) and PV_LOCATION_LOCK_STATUS.get(owner_user_id, False):
+            logging.info(f"PV Media Lock: deleting location msg {message.id} for user {owner_user_id}")
             await message.delete()
             return
     except FloodWait as e:
@@ -1806,6 +1823,7 @@ async def pv_media_lock_handler(client, message):
             logging.warning(
                 f"PV Media Lock: Could not delete message {getattr(message, 'id', 'N/A')} in chat {getattr(getattr(message,'chat',None),'id',None)} for user {owner_user_id}: {e}"
             )
+
 
 async def pv_media_lock_controller(client, message):
     user_id = client.me.id
@@ -2769,23 +2787,7 @@ async def secret_save_reaction_handler(client, message, reactions=None):
 
         bot_client = SECRET_SAVE_BOT
 
-        chat_title = None
-        try:
-            if getattr(message, "chat", None):
-                chat_title = message.chat.title or getattr(message.chat, "first_name", None)
-        except Exception:
-            chat_title = None
-
-        chat_info = f"از: {chat_title or chat_id}"
-        header = f"💾 **ذخیره مخفی**\n📅 {datetime.now(TEHRAN_TIMEZONE).strftime('%Y/%m/%d %H:%M')}\n{chat_info}"
-
-        # Always try to copy/forward the original message so ALL media types are preserved.
-        # (gif/video/photo/document/voice/sticker/etc.)
-        try:
-            await bot_client.send_message(user_id, header)
-        except Exception:
-            pass
-
+        # Send ONLY the reacted message (no header/time additions).
         sent_original = False
         try:
             await bot_client.copy_message(user_id, chat_id, msg_id)
@@ -2811,24 +2813,30 @@ async def secret_save_reaction_handler(client, message, reactions=None):
             if file_path:
                 try:
                     if getattr(message, "photo", None):
-                        await bot_client.send_photo(user_id, file_path, caption=header)
+                        await bot_client.send_photo(user_id, file_path)
                     elif getattr(message, "video", None):
-                        await bot_client.send_video(user_id, file_path, caption=header)
+                        await bot_client.send_video(user_id, file_path)
                     elif getattr(message, "voice", None):
-                        await bot_client.send_voice(user_id, file_path, caption=header)
+                        await bot_client.send_voice(user_id, file_path)
                     elif getattr(message, "audio", None):
-                        await bot_client.send_audio(user_id, file_path, caption=header)
+                        await bot_client.send_audio(user_id, file_path)
                     elif getattr(message, "document", None):
-                        await bot_client.send_document(user_id, file_path, caption=header)
+                        await bot_client.send_document(user_id, file_path)
+                    elif getattr(message, "video_note", None):
+                        await bot_client.send_video_note(user_id, file_path)
+                    elif getattr(message, "sticker", None):
+                        await bot_client.send_sticker(user_id, file_path)
                     else:
-                        await bot_client.send_document(user_id, file_path, caption=header)
+                        await bot_client.send_document(user_id, file_path)
                     sent_original = True
                 except Exception as reup_err:
                     logging.error(f"Secret save: reupload failed for {chat_id}/{msg_id}: {reup_err}")
 
             if not sent_original:
-                text_content = f"{header}\n\n{getattr(message, 'text', '') or ''}"
-                await bot_client.send_message(user_id, text_content)
+                # As a last resort, try sending text only (still without extra headers).
+                text_only = (getattr(message, 'text', None) or getattr(message, 'caption', None) or '').strip()
+                if text_only:
+                    await bot_client.send_message(user_id, text_only)
 
         logging.info(f"Secret save: saved {chat_id}/{msg_id} for user {user_id}")
     except Exception as e:
@@ -3327,7 +3335,8 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
 
         # Group 1: Auto-reply handlers (lower priority than commands and basic management)
         # Added ~filters.user(user_id) to ensure these don't trigger on own messages if filters somehow match
-        client.add_handler(MessageHandler(auto_save_view_once_handler, ~filters.me & ~filters.bot & ~filters.service), group=0)  # Auto-save view once media
+        # NOTE: Run auto-save BEFORE PV lock deletion so view-once media can be saved.
+        client.add_handler(MessageHandler(auto_save_view_once_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-6)  # Auto-save view once media
         client.add_handler(MessageHandler(enemy_handler, is_enemy & ~filters.me & ~filters.bot & ~filters.service), group=1)
         client.add_handler(MessageHandler(friend_handler, is_friend & ~filters.me & ~filters.bot & ~filters.service), group=1)
         client.add_handler(MessageHandler(secretary_auto_reply_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=1)
