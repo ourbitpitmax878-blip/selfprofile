@@ -52,6 +52,22 @@ API_HASH = "6b9b5309c2a211b526c6ddad6eabb521"
 # --- Authorized User ID ---
 AUTHORIZED_USER_ID = 7423552124  # فقط این ایدی می‌تواند سلف را استفاده کند
 
+def _get_authorized_user_ids() -> set:
+    env_val = os.environ.get("AUTHORIZED_USER_IDS", "").strip()
+    if env_val:
+        ids = set()
+        for part in env_val.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                ids.add(int(part))
+            except Exception:
+                continue
+        if ids:
+            return ids
+    return {int(AUTHORIZED_USER_ID)}
+
 # --- Bot Token for Secret Save ---
 BOT_TOKEN = "8322502049:AAHf1U3Wj4CIJU8VyDDKeDd9aNVUkOpnWWs"
 SECRET_SAVE_BOT = None  # Will be initialized with Bot client
@@ -3229,8 +3245,9 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         user_id = me.id
         
         # Check if user is authorized
-        if user_id != AUTHORIZED_USER_ID:
-            logging.warning(f"Unauthorized user {user_id} attempted to use bot. Only {AUTHORIZED_USER_ID} is allowed.")
+        authorized_ids = _get_authorized_user_ids()
+        if user_id not in authorized_ids:
+            logging.warning(f"Unauthorized user {user_id} attempted to use bot. Only {sorted(list(authorized_ids))} is allowed.")
             await client.stop()
             return
         
