@@ -5270,6 +5270,7 @@ def run_asyncio_loop():
 
         logging.info("Attempting auto-login for existing sessions from database...")
         started_count = 0
+        authorized_found = False
         try:
             session_docs = list(sessions_collection.find())
             logging.info(f"Found {len(session_docs)} potential session(s) in DB.")
@@ -5293,7 +5294,19 @@ def run_asyncio_loop():
                         me = await tmp_client.get_me()
                         tmp_user_id = getattr(me, 'id', None)
                     except Exception as e_check:
-                        logging.error(f"DB AutoLogin: failed to validate session {phone}: {e_check}", exc_info=True)
+                        err_text = str(e_check)
+                        # Session revoked/unauthorized: noisy stacktraces aren't useful, and doc can be removed.
+                        if "SESSION_REVOKED" in err_text or "401" in err_text or "AUTH" in err_text.upper():
+                            logging.warning(f"DB AutoLogin: session invalid/revoked for {phone}: {err_text}")
+                            try:
+                                doc_id = doc.get('_id')
+                                if doc_id is not None:
+                                    sessions_collection.delete_one({'_id': doc_id})
+                                    logging.info(f"DB AutoLogin: removed revoked session doc for {phone} (id={doc_id}).")
+                            except Exception as del_err:
+                                logging.warning(f"DB AutoLogin: failed to delete revoked session doc for {phone}: {del_err}")
+                        else:
+                            logging.error(f"DB AutoLogin: failed to validate session {phone}: {e_check}", exc_info=True)
                         tmp_user_id = None
                     finally:
                         if tmp_client is not None and tmp_client.is_connected:
@@ -5311,6 +5324,7 @@ def run_asyncio_loop():
                     logging.info(f"Scheduling auto-start for authorized session: {phone} (user_id={tmp_user_id})...")
                     EVENT_LOOP.create_task(start_bot_instance(session_string, phone, font_style, disable_clock))
                     started_count += 1
+                    authorized_found = True
 
                 except KeyError:
                     logging.error(f"DB AutoLogin Error: Document missing 'session_string'. Skipping. Doc ID: {doc.get('_id')}")
@@ -5318,6 +5332,8 @@ def run_asyncio_loop():
                     logging.error(f"DB AutoLogin Error: Failed to schedule start for session {doc.get('phone_number', doc.get('_id', 'unknown'))}: {e_doc}", exc_info=True)
 
             logging.info(f"Finished scheduling auto-start. {started_count} session(s) scheduled.")
+            if not authorized_found:
+                logging.warning("DB AutoLogin: no authorized session found to start. If your features don't work, log in again from the panel so a fresh session for the authorized account is saved.")
         except Exception as e_db_query:
             logging.error(f"DB AutoLogin Error: Failed to query database for sessions: {e_db_query}", exc_info=True)
 
