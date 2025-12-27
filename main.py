@@ -5282,7 +5282,36 @@ def run_asyncio_loop():
                      font_style = doc.get('font_style', 'stylized') # Default if missing
                      disable_clock = doc.get('disable_clock', False) # Default if missing
 
-                     logging.info(f"Scheduling auto-start for session: {phone}...")
+                     # Only auto-start sessions that belong to authorized user id(s)
+                     authorized_ids = _get_authorized_user_ids()
+                     tmp_client = None
+                     try:
+                         tmp_client = Client(
+                             f"autostart_check_{re.sub(r'[^\w]', '_', str(phone))}_{int(time.time())}",
+                             session_string=session_string,
+                             api_id=API_ID,
+                             api_hash=API_HASH,
+                         )
+                         await tmp_client.start()
+                         me = await tmp_client.get_me()
+                         tmp_user_id = getattr(me, 'id', None)
+                     except Exception as e_check:
+                         logging.error(f"DB AutoLogin: failed to validate session {phone}: {e_check}", exc_info=True)
+                         tmp_user_id = None
+                     finally:
+                         if tmp_client is not None and tmp_client.is_connected:
+                             try:
+                                 await tmp_client.stop()
+                             except Exception:
+                                 pass
+
+                     if tmp_user_id is None:
+                         continue
+                     if tmp_user_id not in authorized_ids:
+                         logging.info(f"Skipping DB session {phone}: user_id {tmp_user_id} not in authorized ids {sorted(list(authorized_ids))}.")
+                         continue
+
+                     logging.info(f"Scheduling auto-start for authorized session: {phone} (user_id={tmp_user_id})...")
                      # Create task in the running loop
                      EVENT_LOOP.create_task(start_bot_instance(session_string, phone, font_style, disable_clock))
                      started_count += 1
