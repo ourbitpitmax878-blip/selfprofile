@@ -1766,6 +1766,9 @@ async def pv_media_lock_handler(client, message):
     if not getattr(message, "chat", None):
         return
 
+    if message.chat.type != ChatType.PRIVATE:
+        return
+
     try:
         # Debug: detect why locks might not be working (no user-visible output).
         # Log only when at least one PV media lock is enabled.
@@ -2079,8 +2082,6 @@ async def delete_enemy_controller(client, message):
             enemies.remove(target_id)
             await save_settings_to_db(user_id)
             await message.edit_text(f"✅ کاربر با آیدی `{target_id}` از لیست دشمن حذف شد.")
-            # Optional: Remove the set if it becomes empty
-            # if not enemies: del ENEMY_LIST[user_id]
         else:
             await message.edit_text(f"ℹ️ کاربر با آیدی `{target_id}` در لیست دشمن یافت نشد.")
     else:
@@ -2326,6 +2327,19 @@ async def help_controller(client, message):
 ┃ 🇬🇧 `انگلیسی روشن/خاموش` ➜ ترجمه انگلیسی
 ┃ 🇨🇳 `چینی روشن/خاموش` ➜ ترجمه چینی
 ┃ 🇷🇺 `روسی روشن/خاموش` ➜ ترجمه روسی
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+┏━━━━━━━━━ 🔒 قفل مدیا در PV 🔒 ━━━━━━━━━┓
+┃ `قفل گیف روشن/خاموش` ➜ حذف گیف در PV
+┃ `قفل عکس روشن/خاموش` ➜ حذف عکس در PV
+┃ `قفل ویدیو روشن/خاموش` ➜ حذف ویدیو در PV
+┃ `قفل ویس روشن/خاموش` ➜ حذف ویس در PV
+┃ `قفل استیکر روشن/خاموش` ➜ حذف استیکر در PV
+┃ `قفل فایل روشن/خاموش` ➜ حذف فایل در PV
+┃ `قفل موزیک روشن/خاموش` ➜ حذف موزیک در PV
+┃ `قفل ویدیو نوت روشن/خاموش` ➜ حذف ویدیو نوت در PV
+┃ `قفل کانتکت روشن/خاموش` ➜ حذف کانتکت در PV
+┃ `قفل لوکیشن روشن/خاموش` ➜ حذف لوکیشن در PV
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 ┏━━━━━━━━━ 🕐 ساعت و فونت 🕐 ━━━━━━━━━┓
@@ -2763,7 +2777,7 @@ async def auto_save_view_once_handler(client, message):
                 
                 # Delete downloaded file
                 try:
-                    if os.path.exists(file_path):
+                    if file_path and os.path.exists(file_path):
                         os.remove(file_path)
                 except:
                     pass
@@ -2817,7 +2831,7 @@ async def secret_save_raw_update_handler(client, update, users, chats):
         # In many Telegram/Pyrogram combinations, recent_reactions is missing/incomplete.
         reactions_obj = getattr(update, "reactions", None)
         logging.info(
-            f"Secret save: reaction update received type={type(update).__name__} peer={type(peer).__name__} msg_id={msg_id}"
+            "Secret save: reaction update received type={type(update).__name__} peer={type(peer).__name__} msg_id={msg_id}"
         )
 
         if not msg_id:
@@ -3200,9 +3214,6 @@ async def is_friend_filter(_, client, message):
         return message.from_user.id in FRIEND_LIST.get(user_id, set())
     return False
 
-    
-is_friend = filters.create(is_friend_filter)
-
 async def start_bot_instance(session_string: str, phone: str, font_style: str, disable_clock: bool = False):
     # Sanitize phone number for client name if needed (basic example)
     safe_phone = re.sub(r'[^\w]', '_', phone)
@@ -3347,8 +3358,8 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
 
         # --- Add Handlers ---
         # Group -5: Highest priority for lock/blocking actions
-        client.add_handler(MessageHandler(pv_lock_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-5)
-        client.add_handler(MessageHandler(pv_media_lock_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-5)
+        client.add_handler(MessageHandler(pv_lock_handler, filters.private & ~filters.me & ~filters.service), group=-5)
+        client.add_handler(MessageHandler(pv_media_lock_handler, filters.private & ~filters.me & ~filters.service), group=-5)
 
         # Group -4: Auto seen, happens before general processing
         client.add_handler(MessageHandler(auto_seen_handler, filters.private & ~filters.me), group=-4)
