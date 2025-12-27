@@ -5255,10 +5255,6 @@ def run_flask():
         serve(app_flask, host='0.0.0.0', port=port, threads=8) # Adjust threads as needed
     except ImportError:
         logging.warning("Waitress package not found. Falling back to Flask's built-in development server (NOT recommended for production).")
-        # Flask's dev server is not suitable for production
-        app_flask.run(host='0.0.0.0', port=port)
-    except Exception as flask_err:
-         logging.critical(f"Flask server failed to start: {flask_err}", exc_info=True)
 
 def run_asyncio_loop():
     global EVENT_LOOP
@@ -5267,65 +5263,65 @@ def run_asyncio_loop():
     logging.info("Asyncio event loop set for background thread.")
 
     # --- Auto-Login from Database ---
-    if sessions_collection is not None:
+    async def _db_autologin_start():
+        if sessions_collection is None:
+            logging.info("MongoDB not configured. Skipping auto-login from database.")
+            return
+
         logging.info("Attempting auto-login for existing sessions from database...")
         started_count = 0
         try:
-             # Use find() to get a cursor and iterate
-             session_docs = list(sessions_collection.find()) # Fetch all first to avoid cursor issues if collection changes
-             logging.info(f"Found {len(session_docs)} potential session(s) in DB.")
-             for doc in session_docs:
-                 try:
-                     session_string = doc['session_string']
-                     # Use phone_number if available, otherwise generate a placeholder ID
-                     phone = doc.get('phone_number', f"db_user_{doc.get('_id', f'unk_{started_count}')}")
-                     font_style = doc.get('font_style', 'stylized') # Default if missing
-                     disable_clock = doc.get('disable_clock', False) # Default if missing
+            session_docs = list(sessions_collection.find())
+            logging.info(f"Found {len(session_docs)} potential session(s) in DB.")
+            for doc in session_docs:
+                try:
+                    session_string = doc['session_string']
+                    phone = doc.get('phone_number', f"db_user_{doc.get('_id', f'unk_{started_count}')}")
+                    font_style = doc.get('font_style', 'stylized')
+                    disable_clock = doc.get('disable_clock', False)
 
-                     # Only auto-start sessions that belong to authorized user id(s)
-                     authorized_ids = _get_authorized_user_ids()
-                     tmp_client = None
-                     try:
-                         tmp_client = Client(
-                             f"autostart_check_{re.sub(r'[^\w]', '_', str(phone))}_{int(time.time())}",
-                             session_string=session_string,
-                             api_id=API_ID,
-                             api_hash=API_HASH,
-                         )
-                         await tmp_client.start()
-                         me = await tmp_client.get_me()
-                         tmp_user_id = getattr(me, 'id', None)
-                     except Exception as e_check:
-                         logging.error(f"DB AutoLogin: failed to validate session {phone}: {e_check}", exc_info=True)
-                         tmp_user_id = None
-                     finally:
-                         if tmp_client is not None and tmp_client.is_connected:
-                             try:
-                                 await tmp_client.stop()
-                             except Exception:
-                                 pass
+                    authorized_ids = _get_authorized_user_ids()
+                    tmp_client = None
+                    try:
+                        tmp_client = Client(
+                            f"autostart_check_{re.sub(r'[^\w]', '_', str(phone))}_{int(time.time())}",
+                            session_string=session_string,
+                            api_id=API_ID,
+                            api_hash=API_HASH,
+                        )
+                        await tmp_client.start()
+                        me = await tmp_client.get_me()
+                        tmp_user_id = getattr(me, 'id', None)
+                    except Exception as e_check:
+                        logging.error(f"DB AutoLogin: failed to validate session {phone}: {e_check}", exc_info=True)
+                        tmp_user_id = None
+                    finally:
+                        if tmp_client is not None and tmp_client.is_connected:
+                            try:
+                                await tmp_client.stop()
+                            except Exception:
+                                pass
 
-                     if tmp_user_id is None:
-                         continue
-                     if tmp_user_id not in authorized_ids:
-                         logging.info(f"Skipping DB session {phone}: user_id {tmp_user_id} not in authorized ids {sorted(list(authorized_ids))}.")
-                         continue
+                    if tmp_user_id is None:
+                        continue
+                    if tmp_user_id not in authorized_ids:
+                        logging.info(f"Skipping DB session {phone}: user_id {tmp_user_id} not in authorized ids {sorted(list(authorized_ids))}.")
+                        continue
 
-                     logging.info(f"Scheduling auto-start for authorized session: {phone} (user_id={tmp_user_id})...")
-                     # Create task in the running loop
-                     EVENT_LOOP.create_task(start_bot_instance(session_string, phone, font_style, disable_clock))
-                     started_count += 1
-                     # Optional small delay between starts to avoid overwhelming resources/APIs
-                     # time.sleep(1) # Consider async sleep if this causes issues
-                 except KeyError:
-                     logging.error(f"DB AutoLogin Error: Document missing 'session_string'. Skipping. Doc ID: {doc.get('_id')}")
-                 except Exception as e_doc:
-                     logging.error(f"DB AutoLogin Error: Failed to schedule start for session {doc.get('phone_number', doc.get('_id', 'unknown'))}: {e_doc}", exc_info=True)
-             logging.info(f"Finished scheduling auto-start. {started_count} session(s) scheduled.")
+                    logging.info(f"Scheduling auto-start for authorized session: {phone} (user_id={tmp_user_id})...")
+                    EVENT_LOOP.create_task(start_bot_instance(session_string, phone, font_style, disable_clock))
+                    started_count += 1
+
+                except KeyError:
+                    logging.error(f"DB AutoLogin Error: Document missing 'session_string'. Skipping. Doc ID: {doc.get('_id')}")
+                except Exception as e_doc:
+                    logging.error(f"DB AutoLogin Error: Failed to schedule start for session {doc.get('phone_number', doc.get('_id', 'unknown'))}: {e_doc}", exc_info=True)
+
+            logging.info(f"Finished scheduling auto-start. {started_count} session(s) scheduled.")
         except Exception as e_db_query:
-             logging.error(f"DB AutoLogin Error: Failed to query database for sessions: {e_db_query}", exc_info=True)
-    else:
-        logging.info("MongoDB not configured. Skipping auto-login from database.")
+            logging.error(f"DB AutoLogin Error: Failed to query database for sessions: {e_db_query}", exc_info=True)
+
+    EVENT_LOOP.create_task(_db_autologin_start())
 
     # --- Start Event Loop ---
     try:
