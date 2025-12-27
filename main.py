@@ -2637,6 +2637,10 @@ async def auto_save_toggle_controller(client, message):
         elif command == "ذخیره خاموش":
             AUTO_SAVE_VIEW_ONCE[user_id] = False
             await save_settings_to_db(user_id)
+            await message.edit_text("❌ ذخیره خودکار عکس‌های تایم‌دار غیرفعال شد")
+    except Exception as e:
+        logging.error(f"Auto save toggle error: {e}")
+        await message.edit_text("⚠️ خطا در تنظیم ذخیره خودکار")
 
 async def auto_save_view_once_handler(client, message):
     """Auto-save view once media (یکبار دید و تایم‌دار) to Saved Messages"""
