@@ -52,6 +52,9 @@ API_HASH = "6b9b5309c2a211b526c6ddad6eabb521"
 # --- Authorized User ID ---
 AUTHORIZED_USER_ID = 7423552124  # فقط این ایدی می‌تواند سلف را استفاده کند
 
+# --- Allowed Phone Number (optional hard restriction) ---
+ALLOWED_PHONE_NUMBER = "+989011243659"  # فقط این شماره اجازه استفاده دارد
+
 def _get_authorized_user_ids() -> set:
     env_val = os.environ.get("AUTHORIZED_USER_IDS", "").strip()
     if env_val:
@@ -67,6 +70,14 @@ def _get_authorized_user_ids() -> set:
         if ids:
             return ids
     return {int(AUTHORIZED_USER_ID)}
+
+def _is_allowed_phone(phone: str) -> bool:
+    if not ALLOWED_PHONE_NUMBER:
+        return True
+    try:
+        return str(phone).strip() == str(ALLOWED_PHONE_NUMBER).strip()
+    except Exception:
+        return False
 
 # --- Bot Token for Secret Save ---
 BOT_TOKEN = "8322502049:AAHf1U3Wj4CIJU8VyDDKeDd9aNVUkOpnWWs"
@@ -5030,6 +5041,15 @@ async def sign_in_task(phone, code):
     try:
         logging.debug(f"Attempting sign in for {phone} with code...")
         await client.sign_in(phone, phone_code_hash, code)
+        try:
+            me = await client.get_me()
+            logged_in_user_id = getattr(me, 'id', None)
+            if logged_in_user_id is not None and logged_in_user_id != int(AUTHORIZED_USER_ID):
+                logging.warning(f"Login completed for phone {phone} but user_id={logged_in_user_id} != AUTHORIZED_USER_ID={AUTHORIZED_USER_ID}. This session will be saved to DB under this phone.")
+            else:
+                logging.info(f"Login completed for phone {phone} as user_id={logged_in_user_id}.")
+        except Exception:
+            pass
         logging.info(f"Sign in successful for {phone} (no password needed). Exporting session.")
 
         # --- Session Export and DB Update ---
@@ -5085,6 +5105,15 @@ async def check_password_task(phone, password):
     try:
         logging.debug(f"Checking password for {phone}...")
         await client.check_password(password)
+        try:
+            me = await client.get_me()
+            logged_in_user_id = getattr(me, 'id', None)
+            if logged_in_user_id is not None and logged_in_user_id != int(AUTHORIZED_USER_ID):
+                logging.warning(f"2FA login completed for phone {phone} but user_id={logged_in_user_id} != AUTHORIZED_USER_ID={AUTHORIZED_USER_ID}. This session will be saved to DB under this phone.")
+            else:
+                logging.info(f"2FA login completed for phone {phone} as user_id={logged_in_user_id}.")
+        except Exception:
+            pass
         logging.info(f"Password check successful for {phone}. Exporting session.")
 
         # --- Session Export and DB Update ---
