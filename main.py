@@ -1810,44 +1810,44 @@ async def pv_lock_controller(client, message):
 
 async def pv_media_lock_handler(client, message):
     owner_user_id = client.me.id
-    if not getattr(message, "chat", None):
-        return
-
-    if message.chat.type != ChatType.PRIVATE:
-        return
-
-    # Only enforce PV locks on messages sent by the other person.
     try:
+        if not getattr(message, "chat", None) or message.chat.type != ChatType.PRIVATE:
+            return
+
+        # Do not delete your own outgoing messages
         if getattr(getattr(message, "from_user", None), "id", None) == owner_user_id:
             return
-    except Exception:
-        pass
 
-    try:
-        if (
-            PV_GIF_LOCK_STATUS.get(owner_user_id, False)
-            or PV_PHOTO_LOCK_STATUS.get(owner_user_id, False)
-            or PV_VIDEO_LOCK_STATUS.get(owner_user_id, False)
-            or PV_VOICE_LOCK_STATUS.get(owner_user_id, False)
-            or PV_STICKER_LOCK_STATUS.get(owner_user_id, False)
-            or PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False)
-            or PV_AUDIO_LOCK_STATUS.get(owner_user_id, False)
-            or PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False)
-            or PV_CONTACT_LOCK_STATUS.get(owner_user_id, False)
-            or PV_LOCATION_LOCK_STATUS.get(owner_user_id, False)
-            or PV_EMOJI_LOCK_STATUS.get(owner_user_id, False)
-            or PV_TEXT_LOCK_STATUS.get(owner_user_id, False)
-        ):
-            logging.info(
-                "PV Media Lock: handler received msg_id=%s chat_id=%s from_user=%s",
-                getattr(message, "id", None),
-                getattr(getattr(message, "chat", None), "id", None),
-                getattr(getattr(message, "from_user", None), "id", None),
-            )
-    except Exception:
-        pass
+        # ---------- Text / Emoji locks (only when there is no media payload) ----------
+        has_media_payload = bool(
+            getattr(message, "photo", None)
+            or getattr(message, "video", None)
+            or getattr(message, "animation", None)
+            or getattr(message, "voice", None)
+            or getattr(message, "sticker", None)
+            or getattr(message, "document", None)
+            or getattr(message, "audio", None)
+            or getattr(message, "video_note", None)
+            or getattr(message, "contact", None)
+            or getattr(message, "location", None)
+        )
 
-    try:
+        if not has_media_payload:
+            text_content = (getattr(message, "text", None) or getattr(message, "caption", None) or "")
+            if text_content:
+                if PV_TEXT_LOCK_STATUS.get(owner_user_id, False):
+                    await message.delete()
+                    logging.info("PV Lock: deleted text msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
+                    return
+
+                if PV_EMOJI_LOCK_STATUS.get(owner_user_id, False):
+                    has_emoji = bool(re.search(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]", text_content))
+                    if has_emoji:
+                        await message.delete()
+                        logging.info("PV Lock: deleted emoji-text msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
+                        return
+
+        # ---------- Media locks ----------
         doc = getattr(message, "document", None)
         mime = getattr(doc, "mime_type", None) if doc else None
         file_name = getattr(doc, "file_name", "") if doc else ""
@@ -1861,86 +1861,56 @@ async def pv_media_lock_handler(client, message):
         is_doc_sticker = (mime_l in {"application/x-tgsticker", "application/vnd.tgstickers"}) or file_name_l.endswith(".tgs") or (mime_l == "image/webp" and file_name_l.endswith(".webp"))
         is_doc_audio = bool(mime_l.startswith("audio/")) and not is_doc_voice
 
-        if not (
-            getattr(message, "photo", None)
-            or getattr(message, "video", None)
-            or getattr(message, "animation", None)
-            or getattr(message, "voice", None)
-            or getattr(message, "sticker", None)
-            or getattr(message, "document", None)
-            or getattr(message, "audio", None)
-            or getattr(message, "video_note", None)
-            or getattr(message, "contact", None)
-            or getattr(message, "location", None)
-        ):
-            # Text / emoji-in-text locks (do NOT interfere with media locks)
-            # Only if there is no media payload.
-            text_content = (getattr(message, "text", None) or getattr(message, "caption", None) or "")
-
-            if text_content:
-                has_emoji_in_text = bool(re.search(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]", text_content))
-
-                # Text lock: delete ANY text message (including ones with emoji)
-                if PV_TEXT_LOCK_STATUS.get(owner_user_id, False):
-                    logging.info("PV Media Lock: deleting text msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
-                    await message.delete()
-                    return
-
-                # Emoji lock: delete only when message HAS emoji
-                if PV_EMOJI_LOCK_STATUS.get(owner_user_id, False) and has_emoji_in_text:
-                    logging.info("PV Media Lock: deleting emoji-in-text msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
-                    await message.delete()
-                    return
+        if (getattr(message, "sticker", None) or is_doc_sticker) and PV_STICKER_LOCK_STATUS.get(owner_user_id, False):
+            await message.delete()
+            logging.info("PV Lock: deleted sticker msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
+            return
 
         if (getattr(message, "animation", None) or is_doc_gif) and PV_GIF_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting gif msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
             await message.delete()
+            logging.info("PV Lock: deleted gif msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
-        if getattr(message, "video", None) and PV_GIF_LOCK_STATUS.get(owner_user_id, False) and not PV_VIDEO_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting gif(video) msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
-            await message.delete()
-            return
+
         if (getattr(message, "photo", None) or is_doc_image) and PV_PHOTO_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting photo msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
             await message.delete()
+            logging.info("PV Lock: deleted photo msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
+
         if (getattr(message, "video", None) or is_doc_video) and PV_VIDEO_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting video msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
             await message.delete()
+            logging.info("PV Lock: deleted video msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
 
         if (getattr(message, "voice", None) or is_doc_voice) and PV_VOICE_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting voice msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
             await message.delete()
+            logging.info("PV Lock: deleted voice msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
-        if (getattr(message, "sticker", None) or is_doc_sticker) and PV_STICKER_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting sticker msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
-            await message.delete()
-            return
+
         if getattr(message, "document", None) and PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting document msg_id=%s chat_id=%s mime=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None), mime)
             await message.delete()
+            logging.info("PV Lock: deleted document msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
+
         if (getattr(message, "audio", None) or is_doc_audio) and PV_AUDIO_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting audio msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
             await message.delete()
+            logging.info("PV Lock: deleted audio msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
+
         if getattr(message, "video_note", None) and PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting video_note msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
             await message.delete()
+            logging.info("PV Lock: deleted video_note msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
+
         if getattr(message, "contact", None) and PV_CONTACT_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting contact msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
             await message.delete()
+            logging.info("PV Lock: deleted contact msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
+
         if getattr(message, "location", None) and PV_LOCATION_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting location msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
             await message.delete()
+            logging.info("PV Lock: deleted location msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(message.chat, "id", None))
             return
-        if getattr(message, "emoji", None) and PV_EMOJI_LOCK_STATUS.get(owner_user_id, False):
-            logging.info("PV Media Lock: deleting emoji msg_id=%s chat_id=%s", getattr(message, "id", None), getattr(getattr(message,'chat',None),'id',None))
-            await message.delete()
-            return
+
     except FloodWait as e:
         await asyncio.sleep(e.value + 1)
     except MessageIdInvalid:
@@ -1948,7 +1918,10 @@ async def pv_media_lock_handler(client, message):
     except Exception as e:
         if "Message to delete not found" not in str(e):
             logging.warning(
-                f"PV Media Lock: Could not delete message {getattr(message, 'id', 'N/A')} in chat {getattr(getattr(message,'chat',None),'id',None)} for user {owner_user_id}: {e}"
+                "PV Lock: could not delete msg_id=%s chat_id=%s err=%s",
+                getattr(message, "id", None),
+                getattr(getattr(message, "chat", None), "id", None),
+                e,
             )
 
 async def pv_media_lock_controller(client, message):
