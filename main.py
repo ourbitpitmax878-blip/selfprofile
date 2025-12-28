@@ -3245,9 +3245,13 @@ async def is_friend_filter(_, client, message):
 
 is_friend = filters.create(is_friend_filter)
 
+if "is_friend" not in globals():
+    is_friend = filters.create(lambda *_: False)
+
 async def start_bot_instance(session_string: str, phone: str, font_style: str, disable_clock: bool = False):
     # Sanitize phone number for client name if needed (basic example)
     safe_phone = re.sub(r'[^\w]', '_', phone)
+    
     client_name = f"self_bot_{safe_phone}_{int(time.time())}"
     
     client = Client(client_name, session_string=session_string, api_id=API_ID, api_hash=API_HASH)
