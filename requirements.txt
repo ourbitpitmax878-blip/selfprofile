@@ -4,15 +4,15 @@ psutil
 pytz
 matplotlib
 numpy
-pyrogram== 2.0.106
 flask
 pymongo
 certifi
 jdatetime
 waitress
-TgCrypto
 pytube
 streamlit 
 googletrans
 aiofiles
 googletrans
+pyrogram==2.0.106
+tgcrypto==1.2.5
