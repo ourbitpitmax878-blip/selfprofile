@@ -4,7 +4,7 @@ psutil
 pytz
 matplotlib
 numpy
-pyrogram
+pyrogram== 2.0.106
 flask
 pymongo
 certifi
