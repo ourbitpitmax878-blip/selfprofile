@@ -1893,6 +1893,11 @@ async def pv_media_lock_handler(client, message):
     except MessageIdInvalid:
         pass
     except Exception as e:
+        if "Message to delete not found" not in str(e):
+            logging.warning(
+                f"PV Media Lock: Could not delete message {getattr(message, 'id', 'N/A')} in chat {getattr(getattr(message,'chat',None),'id',None)} for user {owner_user_id}: {e}"
+            )
+
 async def pv_media_lock_controller(client, message):
     user_id = client.me.id
     command = re.sub(r"\s+", " ", (message.text or "").replace("\u200c", " ").strip())
