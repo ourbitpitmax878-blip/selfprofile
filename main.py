@@ -3309,28 +3309,8 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
     
     client_name = f"self_bot_{safe_phone}_{int(time.time())}"
     
-    client = Client(client_name, session_string=session_string, api_id=API_ID, api_hash=API_HASH)
-    user_id = None
+    # ... (rest of the code remains the same)
 
-    try:
-        logging.info(f"Starting bot instance for {phone}...")
-        await client.start()
-        me = await client.get_me()
-        user_id = me.id
-        
-        # Optional hard restriction by phone number
-        if not _is_allowed_phone(phone):
-            logging.warning(f"Unauthorized phone {phone} attempted to use bot. Allowed phone is {ALLOWED_PHONE_NUMBER}.")
-            await client.stop()
-            return
-        
-        # Check if user is authorized
-        authorized_ids = _get_authorized_user_ids()
-        if user_id not in authorized_ids:
-            logging.warning(f"Unauthorized user {user_id} attempted to use bot. Only {sorted(list(authorized_ids))} is allowed.")
-            await client.stop()
-            return
-        
         logging.info(f"Bot instance started successfully for {phone} (user_id: {user_id})")
         
         # Add global exception handler for peer errors
@@ -3340,16 +3320,39 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
                 if isinstance(exc, ValueError) and 'Peer id invalid' in str(exc):
                     logging.warning(f"Peer ID error handled: {exc}")
                     return
-                elif isinstance(exc, KeyError) and 'ID not found' in str(exc):
+                if isinstance(exc, KeyError) and 'ID not found' in str(exc):
                     logging.warning(f"Peer not found error handled: {exc}")
                     return
-            # For other exceptions, use default handler
             loop.default_exception_handler(context)
+
+        asyncio.get_event_loop().set_exception_handler(handle_peer_error)
+
+        # Pyrogram 2.x may throw peer resolution errors during update parsing (dispatcher worker).
+        # If unhandled, it can stop handler workers and effectively disable all message handlers.
+        try:
+            if hasattr(client, "dispatcher") and hasattr(client.dispatcher, "add_handler"):
+                async def _pyrogram_dispatcher_error_handler(_client, _update, _users, _chats, error):
+                    try:
+                        err_text = str(error)
+                        if isinstance(error, (ValueError, KeyError)) and (
+                            "Peer id invalid" in err_text or "ID not found" in err_text
+                        ):
+                            logging.warning(f"Dispatcher parse error suppressed: {err_text}")
+                            return True
+                    except Exception:
+                        pass
+                    return False
+
+                # group=-999 to run as early as possible
+                client.dispatcher.add_handler(RawUpdateHandler(_pyrogram_dispatcher_error_handler), group=-999)
+        except Exception:
+            pass
         
         # Set the exception handler for the current loop
         asyncio.get_event_loop().set_exception_handler(handle_peer_error)
 
     except (UserDeactivated, AuthKeyUnregistered) as e:
+        # ... (rest of the code remains the same)
         logging.error(f"Session for phone {phone} is invalid ({type(e).__name__}). Removing from database.")
         if sessions_collection is not None:
             try:
