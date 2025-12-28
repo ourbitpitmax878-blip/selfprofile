@@ -1863,25 +1863,6 @@ async def pv_media_lock_handler(client, message):
         if getattr(message, "location", None) and PV_LOCATION_LOCK_STATUS.get(owner_user_id, False):
             await message.delete()
             return
-        # If any lock is enabled but media type didn't match (e.g., document vs video),
-        # delete any media to be safe (mirrors user's expectation that lock should work).
-        if (
-            getattr(message, "media", None)
-            and (
-                PV_GIF_LOCK_STATUS.get(owner_user_id, False)
-                or PV_PHOTO_LOCK_STATUS.get(owner_user_id, False)
-                or PV_VIDEO_LOCK_STATUS.get(owner_user_id, False)
-                or PV_VOICE_LOCK_STATUS.get(owner_user_id, False)
-                or PV_STICKER_LOCK_STATUS.get(owner_user_id, False)
-                or PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False)
-                or PV_AUDIO_LOCK_STATUS.get(owner_user_id, False)
-                or PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False)
-                or PV_CONTACT_LOCK_STATUS.get(owner_user_id, False)
-                or PV_LOCATION_LOCK_STATUS.get(owner_user_id, False)
-            )
-        ):
-            await message.delete()
-            return
     except FloodWait as e:
         await asyncio.sleep(e.value + 1)
     except MessageIdInvalid:
@@ -1894,7 +1875,7 @@ async def pv_media_lock_handler(client, message):
 
 async def pv_media_lock_controller(client, message):
     user_id = client.me.id
-    command = message.text.strip()
+    command = re.sub(r"\s+", " ", (message.text or "").replace("\u200c", " ").strip())
 
     mapping = {
         "قفل گیف روشن": (PV_GIF_LOCK_STATUS, True, "✅ قفل گیف در PV فعال شد. هر گیفی ارسال شود حذف می‌شود."),
@@ -2188,7 +2169,6 @@ async def delete_enemy_reply_controller(client, message):
         except Exception as e:
             logging.error(f"Delete Enemy Reply: Error for user {user_id}: {e}", exc_info=True)
             await message.edit_text("⚠️ خطایی در حذف متن دشمن رخ داد.")
-    # else: Regex didn't match (should not happen with current handler setup)
 
 async def set_enemy_reply_controller(client, message):
     user_id = client.me.id
@@ -3417,7 +3397,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
         client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
         client.add_handler(MessageHandler(pv_lock_controller, cmd_filters & filters.regex("^(پیوی قفل|پیوی باز)$")))
-        client.add_handler(MessageHandler(pv_media_lock_controller, cmd_filters & filters.regex("^(قفل گیف روشن|قفل گیف خاموش|قفل عکس روشن|قفل عکس خاموش|قفل ویدیو روشن|قفل ویدیو خاموش|قفل ویس روشن|قفل ویس خاموش|قفل استیکر روشن|قفل استیکر خاموش|قفل فایل روشن|قفل فایل خاموش|قفل موزیک روشن|قفل موزیک خاموش|قفل ویدیو نوت روشن|قفل ویدیو نوت خاموش|قفل کانتکت روشن|قفل کانتکت خاموش|قفل لوکیشن روشن|قفل لوکیشن خاموش)$")))
+        client.add_handler(MessageHandler(pv_media_lock_controller, cmd_filters & filters.regex(r"^\s*(قفل\s+گیف\s+(?:روشن|خاموش)|قفل\s+عکس\s+(?:روشن|خاموش)|قفل\s+ویدیو\s+(?:روشن|خاموش)|قفل\s+ویس\s+(?:روشن|خاموش)|قفل\s+استیکر\s+(?:روشن|خاموش)|قفل\s+فایل\s+(?:روشن|خاموش)|قفل\s+موزیک\s+(?:روشن|خاموش)|قفل\s+ویدیو\s+نوت\s+(?:روشن|خاموش)|قفل\s+کانتکت\s+(?:روشن|خاموش)|قفل\s+لوکیشن\s+(?:روشن|خاموش))\s*$")))
         client.add_handler(MessageHandler(font_controller, cmd_filters & filters.regex(r"^(فونت|فونت \d+)$")))
         client.add_handler(MessageHandler(clock_controller, cmd_filters & filters.regex("^(ساعت روشن|ساعت خاموش)$")))
         
