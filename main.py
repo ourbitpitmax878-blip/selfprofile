@@ -1804,12 +1804,30 @@ async def pv_media_lock_handler(client, message):
         except Exception:
             mime = None
 
+        if not (
+            getattr(message, "photo", None)
+            or getattr(message, "video", None)
+            or getattr(message, "animation", None)
+            or getattr(message, "voice", None)
+            or getattr(message, "sticker", None)
+            or getattr(message, "document", None)
+            or getattr(message, "audio", None)
+            or getattr(message, "video_note", None)
+            or getattr(message, "contact", None)
+            or getattr(message, "location", None)
+        ):
+            return
+
         is_doc_image = bool(mime) and mime.startswith("image/")
         is_doc_video = bool(mime) and mime.startswith("video/")
         is_doc_audio = bool(mime) and mime.startswith("audio/")
         is_doc_voice = bool(mime) and mime in ("audio/ogg", "audio/opus")
         is_doc_sticker = bool(mime) and mime in ("image/webp", "application/x-tgsticker")
-        is_doc_gif = bool(mime) and mime == "video/mp4" and (getattr(getattr(message, "document", None), "file_name", "") or "").lower().endswith(".mp4")
+        doc_name = (getattr(getattr(message, "document", None), "file_name", None) or "").lower()
+        is_doc_gif = bool(mime) and (
+            mime == "image/gif"
+            or (mime == "video/mp4" and (doc_name.endswith(".gif") or doc_name.endswith(".mp4")))
+        )
 
         # Debug: detect why locks might not be working (no user-visible output).
         # Log only when at least one PV media lock is enabled.
@@ -1826,7 +1844,7 @@ async def pv_media_lock_handler(client, message):
             or PV_LOCATION_LOCK_STATUS.get(owner_user_id, False)
         ):
             logging.info(
-                "PV Media Lock: incoming msg_id=%s chat_id=%s media=%s photo=%s video=%s animation=%s voice=%s sticker=%s document=%s audio=%s video_note=%s contact=%s location=%s",
+                "PV Media Lock: incoming msg_id=%s chat_id=%s media=%s photo=%s video=%s animation=%s voice=%s sticker=%s document=%s doc_mime=%s doc_name=%s audio=%s video_note=%s contact=%s location=%s",
                 getattr(message, "id", None),
                 getattr(getattr(message, "chat", None), "id", None),
                 getattr(message, "media", None),
@@ -1836,6 +1854,8 @@ async def pv_media_lock_handler(client, message):
                 bool(getattr(message, "voice", None)),
                 bool(getattr(message, "sticker", None)),
                 bool(getattr(message, "document", None)),
+                mime,
+                getattr(getattr(message, "document", None), "file_name", None),
                 bool(getattr(message, "audio", None)),
                 bool(getattr(message, "video_note", None)),
                 bool(getattr(message, "contact", None)),
