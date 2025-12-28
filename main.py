@@ -3432,7 +3432,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
         client.add_handler(MessageHandler(set_secretary_message_controller, cmd_filters & filters.regex(r"^منشی متن(?: |$)(.*)", flags=re.DOTALL | re.IGNORECASE)))
         client.add_handler(MessageHandler(pv_lock_controller, cmd_filters & filters.regex("^(پیوی قفل|پیوی باز)$")))
-        client.add_handler(MessageHandler(pv_media_lock_controller, cmd_filters & filters.regex(r"^\s*(قفل\s+گیف\s+(?:روشن|خاموش)|قفل\s+عکس\s+(?:روشن|خاموش)|قفل\s+ویدیو\s+(?:روشن|خاموش)|قفل\s+ویس\s+(?:روشن|خاموش)|قفل\s+استیکر\s+(?:روشن|خاموش)|قفل\s+فایل\s+(?:روشن|خاموش)|قفل\s+موزیک\s+(?:روشن|خاموش)|قفل\s+ویدیو\s+نوت\s+(?:روشن|خاموش)|قفل\s+کانتکت\s+(?:روشن|خاموش)|قفل\s+لوکیشن\s+(?:روشن|خاموش))\s*$")))
+        client.add_handler(MessageHandler(pv_media_lock_controller, cmd_filters & filters.regex(r"^\s*قفل\b")))
         client.add_handler(MessageHandler(font_controller, cmd_filters & filters.regex(r"^(فونت|فونت \d+)$")))
         client.add_handler(MessageHandler(clock_controller, cmd_filters & filters.regex("^(ساعت روشن|ساعت خاموش)$")))
         
