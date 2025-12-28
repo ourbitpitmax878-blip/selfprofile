@@ -3304,16 +3304,18 @@ if "is_friend" not in globals():
     is_friend = filters.create(lambda *_: False)
 
 async def start_bot_instance(session_string: str, phone: str, font_style: str, disable_clock: bool = False):
-    # Sanitize phone number for client name if needed (basic example)
     safe_phone = re.sub(r'[^\w]', '_', phone)
-    
     client_name = f"self_bot_{safe_phone}_{int(time.time())}"
-    
-    # ... (rest of the code remains the same)
+    client = Client(client_name, session_string=session_string, api_id=API_ID, api_hash=API_HASH)
+    user_id = None
 
+    try:
+        logging.info(f"Starting bot instance for {phone}...")
+        await client.start()
+        me = await client.get_me()
+        user_id = me.id
         logging.info(f"Bot instance started successfully for {phone} (user_id: {user_id})")
-        
-        # Add global exception handler for peer errors
+
         def handle_peer_error(loop, context):
             if 'exception' in context:
                 exc = context['exception']
@@ -3325,30 +3327,6 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
                     return
             loop.default_exception_handler(context)
 
-        asyncio.get_event_loop().set_exception_handler(handle_peer_error)
-
-        # Pyrogram 2.x may throw peer resolution errors during update parsing (dispatcher worker).
-        # If unhandled, it can stop handler workers and effectively disable all message handlers.
-        try:
-            if hasattr(client, "dispatcher") and hasattr(client.dispatcher, "add_handler"):
-                async def _pyrogram_dispatcher_error_handler(_client, _update, _users, _chats, error):
-                    try:
-                        err_text = str(error)
-                        if isinstance(error, (ValueError, KeyError)) and (
-                            "Peer id invalid" in err_text or "ID not found" in err_text
-                        ):
-                            logging.warning(f"Dispatcher parse error suppressed: {err_text}")
-                            return True
-                    except Exception:
-                        pass
-                    return False
-
-                # group=-999 to run as early as possible
-                client.dispatcher.add_handler(RawUpdateHandler(_pyrogram_dispatcher_error_handler), group=-999)
-        except Exception:
-            pass
-        
-        # Set the exception handler for the current loop
         asyncio.get_event_loop().set_exception_handler(handle_peer_error)
 
     except (UserDeactivated, AuthKeyUnregistered) as e:
