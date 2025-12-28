@@ -3241,6 +3241,8 @@ async def is_friend_filter(_, client, message):
         return message.from_user.id in FRIEND_LIST.get(user_id, set())
     return False
 
+is_friend = filters.create(is_friend_filter)
+
 async def start_bot_instance(session_string: str, phone: str, font_style: str, disable_clock: bool = False):
     # Sanitize phone number for client name if needed (basic example)
     safe_phone = re.sub(r'[^\w]', '_', phone)
