@@ -3197,6 +3197,23 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
          return # Stop execution for this instance
 
     except Exception as e_start:
+        err_text = str(e_start)
+        if ("SESSION_REVOKED" in err_text) or (type(e_start).__name__ == "SessionRevoked") or ("unauthorized_401" in err_text):
+            logging.error(f"Session revoked/unauthorized for {phone}. Removing from database.")
+            if sessions_collection is not None:
+                try:
+                    res = sessions_collection.delete_one({'phone_number': phone})
+                    if getattr(res, 'deleted_count', 0) == 0:
+                        sessions_collection.delete_one({'session_string': session_string})
+                except Exception as db_del_err:
+                     logging.error(f"DB Error: Failed to delete revoked session for {phone}: {db_del_err}")
+            if client.is_connected:
+                try:
+                    await client.stop()
+                except Exception as stop_err:
+                    logging.error(f"Error stopping revoked client {phone}: {stop_err}")
+            return
+
         logging.error(f"FAILED to start client {phone}: {e_start}", exc_info=True)
         if client.is_connected:
              try: await client.stop()
