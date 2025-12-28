@@ -3236,7 +3236,7 @@ is_enemy = filters.create(is_enemy_filter)
 
 async def is_friend_filter(_, client, message):
     user_id = client.me.id
-     # Check if message and from_user exist before accessing id
+    # Check if message and from_user exist before accessing id
     if FRIEND_ACTIVE.get(user_id, False) and message and message.from_user:
         return message.from_user.id in FRIEND_LIST.get(user_id, set())
     return False
@@ -3254,6 +3254,12 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         await client.start()
         me = await client.get_me()
         user_id = me.id
+        
+        # Optional hard restriction by phone number
+        if not _is_allowed_phone(phone):
+            logging.warning(f"Unauthorized phone {phone} attempted to use bot. Allowed phone is {ALLOWED_PHONE_NUMBER}.")
+            await client.stop()
+            return
         
         # Check if user is authorized
         authorized_ids = _get_authorized_user_ids()
@@ -3403,7 +3409,7 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         # Group 0: Command handlers (default group)
         cmd_filters = filters.me & filters.text
 
-        client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=-10)
+        client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=0)
         client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex(r"^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش)$")))
         client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$"))) # Translate command requires reply
         client.add_handler(MessageHandler(set_translation_controller, cmd_filters & filters.regex(r"^(ترجمه [a-z]{2}(?:-[a-z]{2})?|ترجمه خاموش|چینی روشن|چینی خاموش|روسی روشن|روسی خاموش|انگلیسی روشن|انگلیسی خاموش)$", flags=re.IGNORECASE)))
