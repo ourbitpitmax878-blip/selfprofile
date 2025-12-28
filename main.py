@@ -1824,6 +1824,30 @@ async def pv_media_lock_handler(client, message):
         pass
 
     try:
+        if (
+            PV_GIF_LOCK_STATUS.get(owner_user_id, False)
+            or PV_PHOTO_LOCK_STATUS.get(owner_user_id, False)
+            or PV_VIDEO_LOCK_STATUS.get(owner_user_id, False)
+            or PV_VOICE_LOCK_STATUS.get(owner_user_id, False)
+            or PV_STICKER_LOCK_STATUS.get(owner_user_id, False)
+            or PV_DOCUMENT_LOCK_STATUS.get(owner_user_id, False)
+            or PV_AUDIO_LOCK_STATUS.get(owner_user_id, False)
+            or PV_VIDEO_NOTE_LOCK_STATUS.get(owner_user_id, False)
+            or PV_CONTACT_LOCK_STATUS.get(owner_user_id, False)
+            or PV_LOCATION_LOCK_STATUS.get(owner_user_id, False)
+            or PV_EMOJI_LOCK_STATUS.get(owner_user_id, False)
+            or PV_TEXT_LOCK_STATUS.get(owner_user_id, False)
+        ):
+            logging.info(
+                "PV Media Lock: handler received msg_id=%s chat_id=%s from_user=%s",
+                getattr(message, "id", None),
+                getattr(getattr(message, "chat", None), "id", None),
+                getattr(getattr(message, "from_user", None), "id", None),
+            )
+    except Exception:
+        pass
+
+    try:
         doc = getattr(message, "document", None)
         mime = getattr(doc, "mime_type", None) if doc else None
         file_name = getattr(doc, "file_name", "") if doc else ""
@@ -1967,6 +1991,7 @@ async def pv_media_lock_controller(client, message):
         store, value, text = mapping[command]
         store[user_id] = value
         await save_settings_to_db(user_id)
+        logging.info(f"PV Media Lock: {command} set to {value} for user {user_id}")
         await message.edit_text(text)
     except FloodWait as e:
         await asyncio.sleep(e.value + 1)
@@ -2485,16 +2510,6 @@ async def help_controller(client, message):
 ┏━━━━━━━━━ 🛡 امنیت و منشی 🛡 ━━━━━━━━━┓
 ┃ 🔐 `پیوی قفل` ➜ قفل پیام‌های خصوصی
 ┃ 🔓 `پیوی باز` ➜ باز کردن پیام‌ها
-┃ 🎬 `قفل گیف روشن/خاموش` ➜ حذف گیف‌های PV
-┃ 📸 `قفل عکس روشن/خاموش` ➜ حذف عکس‌های PV
-┃ 🎞 `قفل ویدیو روشن/خاموش` ➜ حذف ویدیوهای PV
-┃ 🎙 `قفل ویس روشن/خاموش` ➜ حذف ویس‌های PV
-┃ 🧷 `قفل استیکر روشن/خاموش` ➜ حذف استیکرهای PV
-┃ 📁 `قفل فایل روشن/خاموش` ➜ حذف فایل‌های PV
-┃ 🎵 `قفل موزیک روشن/خاموش` ➜ حذف موزیک‌های PV
-┃ 🎥 `قفل ویدیو نوت روشن/خاموش` ➜ حذف ویدیو نوت‌های PV
-┃ 👤 `قفل کانتکت روشن/خاموش` ➜ حذف کانتکت‌های PV
-┃ 📍 `قفل لوکیشن روشن/خاموش` ➜ حذف لوکیشن‌های PV
 ┃ 📢 `منشی روشن/خاموش` ➜ فعال/غیرفعال
 ┃ 📝 `منشی متن [متن]` ➜ تنظیم پیام
 ┃ 🤖 `منشی خودکار روشن/خاموش` ➜ منشی AI
@@ -3440,8 +3455,8 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
 
         # --- Add Handlers ---
         # Group -5: Highest priority for lock/blocking actions
-        client.add_handler(MessageHandler(pv_lock_handler, filters.private & ~filters.me & ~filters.service), group=-5)
-        client.add_handler(MessageHandler(pv_media_lock_handler, filters.private & ~filters.service), group=-5)
+        client.add_handler(MessageHandler(pv_lock_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-5)
+        client.add_handler(MessageHandler(pv_media_lock_handler, filters.private & ~filters.me & ~filters.bot & ~filters.service), group=-5)
 
         # Group -4: Auto seen, happens before general processing
         client.add_handler(MessageHandler(auto_seen_handler, filters.private & ~filters.me), group=-4)
