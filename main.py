@@ -3296,10 +3296,26 @@ is_friend = filters.create(is_friend_filter)
 if "is_friend" not in globals():
     is_friend = filters.create(lambda *_: False)
 
+class ResilientClient(Client):
+    """A custom Pyrogram client that is resilient to Peer ID errors in the update loop."""
+    async def handle_updates(self, *args, **kwargs):
+        try:
+            await super().handle_updates(*args, **kwargs)
+        except (ValueError, KeyError) as e:
+            msg = str(e)
+            if 'Peer id invalid' in msg or 'ID not found' in msg:
+                logging.warning(f"RESILIENT_CLIENT: Suppressed update loop crash: {e}")
+            else:
+                logging.error("ResilientClient: Unhandled non-fatal exception in handle_updates", exc_info=True)
+                raise
+        except Exception:
+            logging.error("ResilientClient: FATAL unhandled exception in handle_updates", exc_info=True)
+            raise
+
 async def start_bot_instance(session_string: str, phone: str, font_style: str, disable_clock: bool = False):
     safe_phone = re.sub(r'[^\w]', '_', phone)
     client_name = f"self_bot_{safe_phone}_{int(time.time())}"
-    client = Client(client_name, session_string=session_string, api_id=API_ID, api_hash=API_HASH)
+    client = ResilientClient(client_name, session_string=session_string, api_id=API_ID, api_hash=API_HASH)
     user_id = None
 
     try:
@@ -3320,7 +3336,44 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
                     return
             loop.default_exception_handler(context)
 
-        asyncio.get_event_loop().set_exception_handler(handle_peer_error)
+        def handle_fatal_updates_exception(loop, context):
+            # This is a more aggressive handler specifically for the update loop crashes.
+            exc = context.get('exception')
+            if exc and isinstance(exc, (ValueError, KeyError)):
+                msg = str(exc)
+                # Check for the specific errors that crash the handler task
+                if 'Peer id invalid' in msg or 'ID not found' in msg:
+                    logging.warning(
+                        f"FATAL HANDLED: Suppressed a client-crashing error: {exc}. "
+                        f"The client instance will remain active."
+                    )
+                    return # Suppress the exception
+
+            # If it's not the specific error we want to suppress, fall back to the default handler.
+            logging.error(f"Unhandled exception in event loop: {context.get('message')}", exc_info=exc)
+            loop.default_exception_handler(context)
+
+        # Monkey-patch the handle_updates to make it resilient to Peer ID errors
+        original_handle_updates = client.handle_updates
+
+        async def resilient_handle_updates(*args, **kwargs):
+            try:
+                await original_handle_updates(*args, **kwargs)
+            except (ValueError, KeyError) as e:
+                msg = str(e)
+                if 'Peer id invalid' in msg or 'ID not found' in msg:
+                    logging.warning(f"RESILIENT_HANDLER: Suppressed update loop crash: {e}")
+                    # Instead of crashing, we just log and the task will end.
+                    # Pyrogram should restart it, but if not, the client is still alive.
+                else:
+                    logging.error("Unhandled exception in handle_updates", exc_info=True)
+                    raise # Re-raise other exceptions
+            except Exception:
+                logging.error("FATAL unhandled exception in handle_updates", exc_info=True)
+                raise
+
+        client.handle_updates = resilient_handle_updates
+        logging.info(f"Applied resilient monkey-patch to handle_updates for user {user_id}")
 
     except (UserDeactivated, AuthKeyUnregistered) as e:
         # ... (rest of the code remains the same)
