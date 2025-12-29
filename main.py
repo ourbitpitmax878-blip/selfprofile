@@ -3254,6 +3254,26 @@ async def clock_controller(client, message):
             await message.edit_text("⚠️ خطایی در تنظیم ساعت پروفایل رخ داد.")
         except Exception: pass
 
+
+async def debug_pv_outgoing_logger(client, message):
+    try:
+        if not getattr(message, "chat", None) or message.chat.type != ChatType.PRIVATE:
+            return
+        txt = getattr(message, "text", None) or ""
+        if not txt:
+            return
+        normalized = re.sub(r"\s+", " ", txt.replace("\u200c", " ").strip())
+        logging.info(
+            "DEBUG PV OUT: user_id=%s chat_id=%s msg_id=%s raw=%r normalized=%r",
+            getattr(getattr(client, "me", None), "id", None),
+            getattr(getattr(message, "chat", None), "id", None),
+            getattr(message, "id", None),
+            txt,
+            normalized,
+        )
+    except Exception as e:
+        logging.warning("DEBUG PV OUT: logger failed err=%s", e)
+
 # --- Filters and Bot Setup ---
 async def is_enemy_filter(_, client, message):
     user_id = client.me.id
@@ -3426,10 +3446,12 @@ async def start_bot_instance(session_string: str, phone: str, font_style: str, d
         # Group 0: Command handlers (default group)
         cmd_filters = filters.me & filters.text
 
-        client.add_handler(MessageHandler(debug_pv_outgoing_logger, filters.me & filters.text & filters.private), group=-6)
-        logging.info("DEBUG: registered debug_pv_outgoing_logger for outgoing private text")
+        try:
+            client.add_handler(MessageHandler(debug_pv_outgoing_logger, filters.me & filters.text & filters.private), group=-6)
+            logging.info("DEBUG: registered debug_pv_outgoing_logger for outgoing private text")
+        except Exception as e_reg_dbg:
+            logging.warning("DEBUG: could not register debug_pv_outgoing_logger err=%s", e_reg_dbg)
         
-
         client.add_handler(MessageHandler(help_controller, cmd_filters & filters.regex("^راهنما$")), group=0)
         client.add_handler(MessageHandler(toggle_controller, cmd_filters & filters.regex(r"^(بولد روشن|بولد خاموش|سین روشن|سین خاموش|منشی روشن|منشی خاموش|منشی خودکار روشن|منشی خودکار خاموش|تست ai|وضعیت یادگیری|بکاپ یادگیری|پاکسازی یادگیری|انتی لوگین روشن|انتی لوگین خاموش|تایپ روشن|تایپ خاموش|بازی روشن|بازی خاموش|ضبط ویس روشن|ضبط ویس خاموش|عکس روشن|عکس خاموش|گیف روشن|گیف خاموش|دشمن روشن|دشمن خاموش|دوست روشن|دوست خاموش)$")))
         client.add_handler(MessageHandler(translate_controller, cmd_filters & filters.reply & filters.regex(r"^ترجمه$"))) # Translate command requires reply
