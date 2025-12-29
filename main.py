@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import html
 import traceback
 import json
-
+import pymongo  # اضافه شده برای دیتابیس
 
 # =======================================================
 #  بخش ۱: تنظیمات اولیه و پیکربندی
@@ -41,8 +41,7 @@ TEHRAN_TIMEZONE = ZoneInfo("Asia/Tehran")
 
 # --- MongoDB Connection (اتصال به دیتابیس) ---
 # آدرس اتصال به دیتابیس
-MONGO_URI = "mongodb+srv://amirpitmax5_db_user:q7jB6AU7n15K4pr1@cluster0.lifwlny.mongodb.net/?appName=Cluster0"
-DB_NAME = "telegram_bot_data"  # نام دیتابیس در مونگو
+MONGO_URI = "mongodb+srv://amirpitmax5_db_user:q7jB6AU7n15K4pr1@cluster0.lifwlny.mongodb.net/?appName=Cluster0"  # نام دیتابیس در مونگو
 
 try:
     mongo_client = pymongo.MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
@@ -806,7 +805,7 @@ async def process_tg_service_type(update: Update, context: ContextTypes.DEFAULT_
     if choice == "ممبر ۷ روز بدون ریزش":
         context.user_data['tg_service'] = "7day"
         context.user_data['tg_service_name'] = "7️⃣فیک سرعتی [🟢 7+ روز بدون ریزش]"
-        context.user_data['tg_price'] = 32000
+        context.user_data['tg_price'] = 25000
         text = (
             "7️⃣فیک سرعتی [🟢 7+ روز بدون ریزش]\n"
             "🔆توضیحات محصول:\n\n"
@@ -822,7 +821,7 @@ async def process_tg_service_type(update: Update, context: ContextTypes.DEFAULT_
             "✖️ضریب سفارش: 1\n"
             "🔺حداکثر سفارش: 20000 عدد\n"
             "🔻حداقل سفارش: 500 عدد\n"
-            "🛒هزینه هر کا: 32,000 تومان\n\n"
+            "🛒هزینه هر کا: 25٫000 تومان\n\n"
             "🛍7️⃣فیک سرعتی [🟢 7+ روز بدون ریزش]\n"
             "🌀مقداری بین 500 تا 20000 وارد کنید:"
         )
@@ -832,7 +831,7 @@ async def process_tg_service_type(update: Update, context: ContextTypes.DEFAULT_
     elif choice == "ممبر ۱۴روز بدون ریزش":
         context.user_data['tg_service'] = "14day"
         context.user_data['tg_service_name'] = "0️⃣فیک سرعتی[🟢 14+ روز بدون ریزش]"
-        context.user_data['tg_price'] = 45000
+        context.user_data['tg_price'] = 35000
         text = (
             "0️⃣فیک سرعتی[🟢 14+ روز بدون ریزش]\n"
             "🔆توضیحات محصول:\n\n"
@@ -848,7 +847,7 @@ async def process_tg_service_type(update: Update, context: ContextTypes.DEFAULT_
             "✖️ضریب سفارش: 1\n"
             "🔺حداکثر سفارش: 20000 عدد\n"
             "🔻حداقل سفارش: 500 عدد\n"
-            "🛒هزینه هر کا: 45,000 تومان\n\n"
+            "🛒هزینه هر کا: 35000 تومان\n\n"
             "🛍0️⃣فیک سرعتی[🟢 14+ روز بدون ریزش]\n"
             "🌀مقداری بین 500 تا 20000 وارد کنید:"
         )
@@ -858,25 +857,11 @@ async def process_tg_service_type(update: Update, context: ContextTypes.DEFAULT_
     elif choice == "ممبر ۲۰روز بدون ریزش": # فرض بر اینکه توضیحات مشابه است با قیمت متفاوت
         context.user_data['tg_service'] = "20day"
         context.user_data['tg_service_name'] = "فیک سرعتی [🟢 20+ روز بدون ریزش]"
-        context.user_data['tg_price'] = 50000 # قیمت فرضی چون داده نشده بود
+        context.user_data['tg_price'] = 45000 # قیمت فرضی چون داده نشده بود
         text = (
-            "0️⃣فیک سرعتی[🟢 20+ روز بدون ریزش]\n"
-            "🔆توضیحات محصول:\n\n"
-            "🛍 کیفیت : فوق العاده\n"
-            "📈 ریزش : بدون ریزش حداقل 20 روز [تضمین بدون ریزش به مدت 20 روز]\n"
-            "👁 بازدید : ندارد \n"
-            "⏱️ زمان استارت : آنی به صورت اتومات [میانگین : 1 دقیقه الی 10 دقیقه]‼️گاها مقدار بیشتری تاخیر امکان پذیر است\n"
-            "⚡️سرعت واریز : فوق سرعتی \n"
-            "➕برای کانال های :تمامی کانال ها\n\n"
-            "📄 توضیحات تکمیلی :\n"
-            "‼️🆔جهت برسی ریزش و امکان درخواست جبرانی حتما باید با لینک خصوصی اختصاصی یعنی استفاده از هر لینک فقط برای یک سفارش  ثبت سفارش کنید درغیر این صورت درخواست جبرانی به هیچ عنوان مورد قبول نیست\n"
-            "🔗برای ثبت سفارش لینک عمومی یا خصوصی کانال مورد نظر را وارد کنید\n\n"
-            "✖️ضریب سفارش: 1\n"
-            "🔺حداکثر سفارش: 20000 عدد\n"
-            "🔻حداقل سفارش: 500 عدد\n"
-            "🛒هزینه هر کا: 50,000 تومان\n\n"
-            "🛍0️⃣فیک سرعتی[🟢 20+ روز بدون ریزش]\n"
-            "🌀مقداری بین 500 تا 20000 وارد کنید:":"
+             "فیک سرعتی [🟢 20+ روز بدون ریزش]\n"
+             "🛒هزینه هر کا: 45,000 تومان\n\n"
+             "🌀مقداری بین 500 تا 20000 وارد کنید:"
         )
         await update.message.reply_text(text, reply_markup=ReplyKeyboardMarkup([[KeyboardButton("لغو")]], resize_keyboard=True))
         return AWAIT_TG_AMOUNT
@@ -1939,10 +1924,11 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             # --- تغییر: متن چپ چین شده برای برنده/بازنده (استایل TNT) ---
             result_text = (
                 f"♦️ — <b>TNT Virtual Services</b> — ♦️\n\n"
-                f"🏆 <b>برنده:</b> {winner_display_name}\n"
-                f"❌ <b>بازنده:</b> {loser_display_name}\n\n"
-                f"💰 تعداد : {prize:,} 💎\n"
-                f"📉 ماليات: {tax:,} 💎\n\n"
+                f"🏆 <b>WINNER:</b> {winner_display_name}\n"
+                f"❌ <b>LOSER:</b> {loser_display_name}\n\n"
+                f"💰 Prize: {prize:,} 💎\n"
+                f"📉 Tax: {tax:,} 💎\n\n"
+                f"♦️ — @{context.bot.username} — ♦️"
             )
 
             try:
@@ -2389,4 +2375,5 @@ if __name__ == "__main__":
         logging.info("Bot stopped by user")
     except Exception as e:
         logging.error(f"Fatal error in bot: {e}")
+
         raise
